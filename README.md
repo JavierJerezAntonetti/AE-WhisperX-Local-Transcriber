@@ -2,8 +2,7 @@
 
 Transcribe audio directly within Adobe After Effects using a local WhisperX API. This tool creates styled, word-level text layers from your audio, enabling precise subtitle and kinetic typography workflows.
 
-![Panel Screenshot](![image](https://github.com/user-attachments/assets/ce20222a-fc8c-47b3-ada8-ce34224ca118))
-*(Suggestion: Replace the placeholder above with an actual screenshot of your AE panel in action!)*
+![Panel Screenshot](https://github.com/user-attachments/assets/ce20222a-fc8c-47b3-ada8-ce34224ca118)
 
 ## Table of Contents
 
@@ -34,14 +33,13 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 * **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
 * **Automated Pre-comping:** Generated word layers are automatically grouped into a "Subtitles" pre-comp.
 * **Audio Rendering Utility:** Helper function to quickly render audio from your active AE composition.
-* **Cross-Platform (API):** The Python API can be run on Windows, macOS, or Linux. The AE script is compatible with AE versions that support ScriptUI Panels.
 * **Pre-compiled API Option:** Includes a bundled `.exe` for the API server, eliminating the need for users to install Python and dependencies manually.
 
 ## How it Works
 
-1.  **Start the Local API:** Run the `WhisperX_API.exe` (or `whisperAPI.py` script). This starts a Flask server on your local machine (`http://127.0.0.1:5000`).
+1.  **Start the Local API:** Run the `WhisperX API.exe` (or `whisperAPI.py` script). This starts a Flask server on your local machine (`http://127.0.0.1:5000`).
 2.  **Open the AE Panel:** Launch After Effects and open the "Whisper Transcriber & Audio Tools" panel.
-3.  **Render or Select Audio:**
+3.  **Render Audio:**
     * Optionally, use the panel to render audio from your active composition.
     * Select an existing audio file (`.wav`, `.mp3`, etc.).
 4.  **Configure Styles:** Adjust font, size, and color settings in the panel.
@@ -68,7 +66,7 @@ Before you begin, ensure you have the following installed:
     * **macOS:** Comes pre-installed.
     * **Linux:** Usually pre-installed. If not: `sudo apt install curl`.
 4.  **(Optional - For running API from source only) Python:**
-    * If you choose *not* to use the pre-compiled `WhisperX_API.exe`, you'll need Python.
+    * If you choose *not* to use the pre-compiled `WhisperX API.exe`, you'll need Python.
     * **Crucially, Python version must be LESS THAN 3.13** (e.g., 3.10, 3.11, 3.12) due to Whisper/WhisperX compatibility. You can download older Python versions from [python.org](https://www.python.org/downloads/).
     * `pip` (Python package installer) is also required.
 
@@ -82,12 +80,12 @@ This is the simplest way to get started, especially if you don't want to deal wi
 
 1.  **Download the Release:**
     * Go to the [Releases page](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/releases) of this repository. *(Update this link!)*
-    * Download the latest release ZIP file. It should contain `WhisperX_API.exe` (or a similar name for macOS/Linux if you provide builds for them) and the After Effects script.
-2.  **Place `WhisperX_API.exe`:**
+    * Download the latest release ZIP file. It should contain `WhisperX API.exe` (or a similar name for macOS/Linux if you provide builds for them) and the After Effects script.
+2.  **Place `WhisperX API.exe`:**
     * Extract the ZIP file.
-    * Place `WhisperX_API.exe` in a convenient location on your computer (e.g., `C:\Tools\WhisperX_API\WhisperX_API.exe`).
+    * Place `WhisperX API.exe` in a convenient location on your computer (e.g., `C:\Tools\WhisperX_API\WhisperX_API.exe`).
 3.  **Run the API:**
-    * Double-click `WhisperX_API.exe`.
+    * Double-click `WhisperX API.exe`.
     * A console window will appear. The first time you run it (or after changing the `MODEL_SIZE` or `TARGET_LANGUAGE`), it will download the WhisperX model files. This may take some time and requires an internet connection. Subsequent runs will be faster as models are cached.
     * You should see messages indicating the model is loading and the Flask server is starting (e.g., `Starting Flask server on host 127.0.0.1, port 5000`).
     * **Keep this console window open while you are using the After Effects script.** Closing it will stop the API.
