@@ -58,13 +58,9 @@ Before you begin, ensure you have the following installed:
     * WhisperX (and therefore this API) requires FFmpeg to process audio.
     * It **must** be installed and accessible in your system's PATH.
     * **Windows Guide:** [How to Install FFmpeg on Windows (phoenixnap.com)](https://phoenixnap.com/kb/ffmpeg-windows)
-    * **macOS (using Homebrew):** `brew install ffmpeg`
-    * **Linux (using apt):** `sudo apt update && sudo apt install ffmpeg`
 3.  **Curl (for AE Script):**
     * The After Effects script uses `curl` to communicate with the local API.
     * **Windows:** Modern Windows 10/11 includes `curl`. If not, you might need to install it or ensure it's in your PATH.
-    * **macOS:** Comes pre-installed.
-    * **Linux:** Usually pre-installed. If not: `sudo apt install curl`.
 4.  **(Optional - For running API from source only) Python:**
     * If you choose *not* to use the pre-compiled `WhisperX API.exe`, you'll need Python.
     * **Crucially, Python version must be LESS THAN 3.13** (e.g., 3.10, 3.11, 3.12) due to Whisper/WhisperX compatibility. You can download older Python versions from [python.org](https://www.python.org/downloads/).
@@ -79,14 +75,14 @@ Choose **one** of the following methods to set up the API:
 This is the simplest way to get started, especially if you don't want to deal with Python environments.
 
 1.  **Download the Release:**
-    * Go to the [Releases page](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/releases) of this repository. *(Update this link!)*
-    * Download the latest release ZIP file. It should contain `WhisperX API.exe` (or a similar name for macOS/Linux if you provide builds for them) and the After Effects script.
+    * Go to the [Releases page](https://github.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/releases) of this repository.
+    * Download the latest release ZIP file. It should contain `WhisperX API.exe` and the After Effects script.
 2.  **Place `WhisperX API.exe`:**
     * Extract the ZIP file.
-    * Place `WhisperX API.exe` in a convenient location on your computer (e.g., `C:\Tools\WhisperX_API\WhisperX_API.exe`).
+    * Place `WhisperX API.exe` in a convenient location on your computer.
 3.  **Run the API:**
     * Double-click `WhisperX API.exe`.
-    * A console window will appear. The first time you run it (or after changing the `MODEL_SIZE` or `TARGET_LANGUAGE`), it will download the WhisperX model files. This may take some time and requires an internet connection. Subsequent runs will be faster as models are cached.
+    * A console window will appear. The first time you run it, it will download the WhisperX model files. This may take some time and requires an internet connection. Subsequent runs will be faster as models are cached.
     * You should see messages indicating the model is loading and the Flask server is starting (e.g., `Starting Flask server on host 127.0.0.1, port 5000`).
     * **Keep this console window open while you are using the After Effects script.** Closing it will stop the API.
 4.  **Proceed to [After Effects Script Setup](#after-effects-script-setup).**
@@ -95,12 +91,9 @@ This is the simplest way to get started, especially if you don't want to deal wi
 
 This method gives you more control and is necessary if you want to modify the API code.
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone [https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git)
-    cd YOUR_REPO_NAME
-    ```
-    *(Update this link!)*
+1.  **Download the Release:**
+    * Go to the [Releases page](https://github.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/releases) of this repository.
+    * Download the latest release ZIP file of the Full Files version. It should contain `whisperAPI.py` and the After Effects script.
 2.  **Set up a Python Environment (Recommended):**
     * Ensure you have Python installed (version < 3.13).
     * It's highly recommended to use a virtual environment:
@@ -108,8 +101,6 @@ This method gives you more control and is necessary if you want to modify the AP
         python -m venv venv
         # On Windows
         venv\Scripts\activate
-        # On macOS/Linux
-        source venv/bin/activate
         ```
 3.  **Install Dependencies:**
     * The `requirements.txt` file lists all necessary Python packages.
@@ -121,7 +112,7 @@ This method gives you more control and is necessary if you want to modify the AP
     ```bash
     python whisperAPI.py
     ```
-    * A console window will appear. The first time you run it (or after changing `MODEL_SIZE` or `TARGET_LANGUAGE`), it will download the WhisperX model files. This may take some time and requires an internet connection.
+    * A console window will appear. The first time you run it, it will download the WhisperX model files. This may take some time and requires an internet connection.
     * You should see messages indicating the model is loading and the Flask server is starting (e.g., `Starting Flask server on host 127.0.0.1, port 5000`).
     * **Keep this console window open while you are using the After Effects script.**
 5.  **Proceed to [After Effects Script Setup](#after-effects-script-setup).**
@@ -129,10 +120,9 @@ This method gives you more control and is necessary if you want to modify the AP
 ## After Effects Script Setup
 
 1.  **Locate the Script:**
-    * Find the `Whisper Transcriber Panel.jsx` file (or a similar `.jsx` file name) from the downloaded release or the cloned repository.
+    * Find the `Whisper Transcriber Panel.jsx` file (or a similar `.jsx` file name) from the downloaded release.
 2.  **Copy the Script to AE's ScriptUI Panels Folder:**
     * **Windows:** `C:\Program Files\Adobe\Adobe After Effects <YEAR>\Support Files\Scripts\ScriptUI Panels\`
-    * **macOS:** `/Applications/Adobe After Effects <YEAR>/Scripts/ScriptUI Panels/`
     *(Replace `<YEAR>` with your After Effects version, e.g., 2025)*
 3.  **Launch/Relaunch After Effects:**
     * If After Effects was open, you might need to restart it, or go to `Window > Find Script` and select it if AE supports dynamic loading of new panels.
@@ -174,6 +164,8 @@ Before transcribing, you can set the default appearance for the generated text l
     * These layers will be styled according to your settings and timed to match the audio.
     * A pop-up will confirm the number of layers created.
     * All new text layers will be automatically pre-composed into a new comp named "Subtitles".
+      ### Notes:
+    * The text layers are created with a small pop-in effect by keyframing the scale.
 
 ## API Configuration (Optional)
 
@@ -182,12 +174,11 @@ You can configure the WhisperX model and language by editing the `whisperAPI.py`
 Key variables at the top of `whisperAPI.py`:
 
 * `MODEL_SIZE`: Specifies the Whisper model size. Options include `"tiny"`, `"base"`, `"small"`, `"medium"`, `"large-v1"`, `"large-v2"`, `"large-v3"`. Larger models are more accurate but slower and require more resources. `"large-v3"` is the default.
-    * For non-English languages, some models have multilingual variants (e.g., `tiny.en`, `base.en`). The script currently uses the general models which should autodetect or use the `TARGET_LANGUAGE`.
+    * For non-English languages, some models have multilingual variants (e.g., `tiny.en`, `base.en`). The script currently uses the general models which should autodetect the language.
 * `DEVICE`: Set to `"cpu"` (default) or `"cuda"` if you have an NVIDIA GPU and want to use it for faster processing (requires compatible PyTorch installation).
 * `COMPUTE_TYPE`: Optimization for the model.
     * For `DEVICE="cpu"`: `"int8"` (default) is generally good.
     * For `DEVICE="cuda"`: `"float16"` or `"bfloat16"` (if supported) are common.
-* `TARGET_LANGUAGE`: Specify the language code of your audio (e.g., `"en"` for English, `"es"` for Spanish, `"fr"` for French). If WhisperX detects a different language, it will use this `TARGET_LANGUAGE` for the alignment step. For a list of supported language codes, refer to the Whisper documentation. Default is `"es"`.
 * `BATCH_SIZE`: Affects transcription speed, especially on GPU. Default is `16`.
 
 If you change these settings after the API has already downloaded models for previous settings, it might need to download new model files when it next starts.
@@ -195,7 +186,7 @@ If you change these settings after the API has already downloaded models for pre
 ## Troubleshooting
 
 * **"API call failed or produced no response file" / "Received HTML instead of JSON" in AE:**
-    * Ensure the `WhisperX_API.exe` or `python whisperAPI.py` server is running. Check its console window for errors.
+    * Ensure the `WhisperX API.exe` or `python whisperAPI.py` server is running. Check its console window for errors.
     * Verify FFmpeg is installed and in your system PATH. The API console will usually show an error if FFmpeg is missing.
     * Make sure no firewall is blocking local connections to `http://127.0.0.1:5000`.
     * Check the API console for errors like "Error loading WhisperX model". This could happen if the model download was interrupted or if there's an issue with the cached model files. Try deleting the model cache (usually in `~/.cache/whisperx` or `C:\Users\YourUser\.cache\whisperx`) and letting the API re-download.
@@ -206,7 +197,6 @@ If you change these settings after the API has already downloaded models for pre
     * Using larger `MODEL_SIZE` (e.g., "large-v3") is more accurate but slower. Consider a smaller model if speed is critical and accuracy is less so.
     * If you have a compatible NVIDIA GPU, ensure `DEVICE` is set to `"cuda"` in `whisperAPI.py` and you have the correct PyTorch version installed (see Python setup).
 * **Incorrect Word Timing / Alignment Issues:**
-    * Ensure `TARGET_LANGUAGE` in `whisperAPI.py` is set correctly for your audio.
     * Clear audio quality is important. Background noise or unclear speech can affect accuracy.
     * WhisperX alignment quality can vary by language. If alignment fails, the script will still create segment-level text (if available) but without word-level timing.
 * **Python Version Error when running from source:**
@@ -278,10 +268,5 @@ Please try to follow existing code style and provide clear descriptions of your 
 
 ## License
 
-This project is open source. Please specify your chosen license here (e.g., MIT, GPL, Apache 2.0). If you haven't chosen one, MIT is a common and permissive choice.
-
-Example:
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
-*(You would then create a LICENSE.md file with the MIT license text).*
-
 ---
