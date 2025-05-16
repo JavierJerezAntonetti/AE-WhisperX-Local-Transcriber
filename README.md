@@ -74,11 +74,10 @@ Choose **one** of the following methods to set up the API:
 
 This is the simplest way to get started, especially if you don't want to deal with Python environments.
 
-1.  **Download the Release:**
+1.  **Download the Files:**
     * Go to the [Releases page](https://github.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/releases) of this repository.
-    * Download the latest release ZIP file. It should contain `WhisperX API.exe` and the After Effects script.
+    * Download the latest release of the WhisperX API.exe file.
 2.  **Place `WhisperX API.exe`:**
-    * Extract the ZIP file.
     * Place `WhisperX API.exe` in a convenient location on your computer.
 3.  **Run the API:**
     * Double-click `WhisperX API.exe`.
@@ -93,7 +92,7 @@ This method gives you more control and is necessary if you want to modify the AP
 
 1.  **Download the Release:**
     * Go to the [Releases page](https://github.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/releases) of this repository.
-    * Download the latest release ZIP file of the Full Files version. It should contain `whisperAPI.py` and the After Effects script.
+    * Download the `whisperAPI.py` from the repository files.
 2.  **Set up a Python Environment (Recommended):**
     * Ensure you have Python installed (version < 3.13).
     * It's highly recommended to use a virtual environment:
@@ -120,7 +119,7 @@ This method gives you more control and is necessary if you want to modify the AP
 ## After Effects Script Setup
 
 1.  **Locate the Script:**
-    * Find the `Whisper Transcriber Panel.jsx` file (or a similar `.jsx` file name) from the downloaded release.
+    * Download the `SubtitlesGeneratorWhisper.jsx` file from the repository files.
 2.  **Copy the Script to AE's ScriptUI Panels Folder:**
     * **Windows:** `C:\Program Files\Adobe\Adobe After Effects <YEAR>\Support Files\Scripts\ScriptUI Panels\`
     *(Replace `<YEAR>` with your After Effects version, e.g., 2025)*
@@ -209,7 +208,7 @@ If you change these settings after the API has already downloaded models for pre
 
 ### Building the .exe
 
-The provided `WhisperX_API.exe` was bundled using PyInstaller. If you modify `whisperAPI.py` or its dependencies and want to create your own executable:
+The provided `WhisperX API.exe` was bundled using PyInstaller. If you modify `whisperAPI.py` or its dependencies and want to create your own executable:
 
 1.  **Install PyInstaller:**
     ```bash
