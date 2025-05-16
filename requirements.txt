@@ -1,0 +1,16 @@
+# Core Flask and web server components
+flask
+werkzeug
+
+# WhisperX and its primary dependencies
+whisperx @ git+https://github.com/m-bain/whisperX.git@5012650d0f3d8966f3ea517762f952a624996d32
+torch
+torchaudio
+faster_whisper
+
+# Dependencies for Voice Activity Detection (VAD) and other audio processing
+pyannote.audio
+speechbrain
+lightning_fabric
+asteroid-filterbanks
+scikit-learn
