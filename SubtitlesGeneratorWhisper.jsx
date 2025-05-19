@@ -244,12 +244,17 @@
         var totalWordsCreated = 0;
         var segmentsWithIssues = 0;
         var frameDuration = comp.frameDuration;
+        var timeOffset = 0; // --- MODIFICATION START --- Initialize time offset
 
         if (frameDuration <= 0) {
           alert(
-            "Error: Composition frame duration is invalid. Cannot set keyframes or ensure layer visibility accurately."
+            "Error: Composition frame duration is invalid. Cannot set keyframes or ensure layer visibility accurately. Time offset cannot be applied."
           );
+          // frameDuration remains invalid, timeOffset remains 0
+        } else {
+          timeOffset = 3 * frameDuration; // Calculate 3 frames in seconds
         }
+        // --- MODIFICATION END ---
 
         for (var i = 0; i < transcriptionData.segments.length; i++) {
           var segment = transcriptionData.segments[i];
@@ -265,37 +270,51 @@
           for (var j = 0; j < segment.words.length; j++) {
             var wordData = segment.words[j];
             var wordText = wordData.word ? wordData.word.trim() : "";
-            var startTime = parseFloat(wordData.start);
-            var originalEndTime = parseFloat(wordData.end);
+            var originalApiStartTime = parseFloat(wordData.start); // Original time from API
+            var originalApiEndTime = parseFloat(wordData.end); // Original time from API
 
             if (
               wordText &&
-              !isNaN(startTime) &&
-              !isNaN(originalEndTime) &&
-              originalEndTime > startTime
+              !isNaN(originalApiStartTime) &&
+              !isNaN(originalApiEndTime) &&
+              originalApiEndTime > originalApiStartTime
             ) {
+              // --- MODIFICATION START --- Apply time offset
+              var adjustedStartTime = originalApiStartTime - timeOffset;
+              if (adjustedStartTime < 0) {
+                adjustedStartTime = 0; // Clamp to composition start if offset makes it negative
+              }
+              var adjustedOriginalEndTime = originalApiEndTime - timeOffset;
+              // --- MODIFICATION END ---
+
               var textLayer = comp.layers.addText(wordText);
               var safeWordText = wordText
                 .replace(/[^a-zA-Z0-9_]/g, "")
                 .substring(0, MAX_LAYER_NAME_WORD_LENGTH);
               textLayer.name = "W_" + i + "" + j + "" + safeWordText;
-              textLayer.inPoint = startTime;
+              textLayer.inPoint = adjustedStartTime; // Use adjusted start time
 
-              var determinedOutPoint = originalEndTime;
+              var determinedOutPoint = adjustedOriginalEndTime; // Default to word's own (adjusted) end time
+
+              // Determine outPoint based on the next word's (adjusted) start time
               if (j < segment.words.length - 1) {
                 var nextWordInSegmentData = segment.words[j + 1];
                 if (
                   nextWordInSegmentData &&
                   typeof nextWordInSegmentData.start !== "undefined"
                 ) {
-                  var nextStartTimeCandidate = parseFloat(
+                  var nextWordOriginalApiStartTime = parseFloat(
                     nextWordInSegmentData.start
                   );
-                  if (
-                    !isNaN(nextStartTimeCandidate) &&
-                    nextStartTimeCandidate > startTime
-                  ) {
-                    determinedOutPoint = nextStartTimeCandidate;
+                  if (!isNaN(nextWordOriginalApiStartTime)) {
+                    // --- MODIFICATION START --- Adjust next word's start time as well for outPoint calculation
+                    var nextWordAdjustedStartTime =
+                      nextWordOriginalApiStartTime - timeOffset;
+                    if (nextWordAdjustedStartTime > adjustedStartTime) {
+                      // Ensure positive duration and logical order
+                      determinedOutPoint = nextWordAdjustedStartTime;
+                    }
+                    // --- MODIFICATION END ---
                   }
                 }
               } else if (i < transcriptionData.segments.length - 1) {
@@ -310,59 +329,96 @@
                     firstWordInNextSegmentData &&
                     typeof firstWordInNextSegmentData.start !== "undefined"
                   ) {
-                    var nextStartTimeCandidate = parseFloat(
+                    var nextSegmentFirstWordOriginalApiStartTime = parseFloat(
                       firstWordInNextSegmentData.start
                     );
-                    if (
-                      !isNaN(nextStartTimeCandidate) &&
-                      nextStartTimeCandidate > startTime
-                    ) {
-                      determinedOutPoint = nextStartTimeCandidate;
+                    if (!isNaN(nextSegmentFirstWordOriginalApiStartTime)) {
+                      // --- MODIFICATION START --- Adjust next segment's first word's start time
+                      var nextSegmentFirstWordAdjustedStartTime =
+                        nextSegmentFirstWordOriginalApiStartTime - timeOffset;
+                      if (
+                        nextSegmentFirstWordAdjustedStartTime >
+                        adjustedStartTime
+                      ) {
+                        // Ensure positive duration
+                        determinedOutPoint =
+                          nextSegmentFirstWordAdjustedStartTime;
+                      }
+                      // --- MODIFICATION END ---
                     }
                   }
                 }
               }
               textLayer.outPoint = determinedOutPoint;
 
+              // Ensure layer has a minimum duration if outPoint is too early or invalid after adjustment
               if (textLayer.outPoint <= textLayer.inPoint) {
                 if (frameDuration > 0) {
-                  textLayer.outPoint = textLayer.inPoint + frameDuration;
+                  textLayer.outPoint = textLayer.inPoint + frameDuration; // Min 1 frame
                 } else {
+                  // Fallback if frameDuration is invalid (though timeOffset would be 0 in this case)
                   textLayer.outPoint = textLayer.inPoint + 0.04;
                 }
               }
+
               var textProp = textLayer.property("Source Text");
               if (textProp && textProp.numKeys === 0) {
                 var textDocument = textProp.value;
-                textDocument.font = currentFontName; // USE UI VALUE
-                textDocument.fontSize = currentFontSize; // USE UI VALUE
-                textDocument.fillColor = currentFillColor; // USE UI VALUE
+                textDocument.font = currentFontName;
+                textDocument.fontSize = currentFontSize;
+                textDocument.fillColor = currentFillColor;
                 textDocument.justification =
-                  ParagraphJustification.CENTER_JUSTIFY;
+                  ParagraphJustification.CENTER_JUSTIFY; // Important for text alignment
                 textDocument.fontCapsOption = FontCapsOption.FONT_NORMAL_CAPS;
                 if (currentStrokeWidth > 0) {
-                  // USE UI VALUE
                   textDocument.applyStroke = true;
-                  textDocument.strokeColor = currentStrokeColor; // USE UI VALUE
-                  textDocument.strokeWidth = currentStrokeWidth; // USE UI VALUE
+                  textDocument.strokeColor = currentStrokeColor;
+                  textDocument.strokeWidth = currentStrokeWidth;
                   textDocument.strokeOverFill = true;
                 } else {
                   textDocument.applyStroke = false;
                 }
-                textProp.setValue(textDocument);
+                textProp.setValue(textDocument); // Apply all text properties
               }
+
+              // --- MODIFICATION START: Center Anchor Point ---
+              try {
+                // Ensure text properties are fully applied and layer has dimensions.
+                // Use a time when the text is visible; adjustedStartTime (layer's inPoint) is suitable.
+                var rect = textLayer.sourceRectAtTime(adjustedStartTime, false);
+
+                // Check if a valid rectangle was returned
+                if (rect && rect.width > 0 && rect.height > 0) {
+                  var newAnchorX = rect.left + rect.width / 2;
+                  var newAnchorY = rect.top + rect.height / 2;
+                  textLayer
+                    .property("Transform")
+                    .property("Anchor Point")
+                    .setValue([newAnchorX, newAnchorY]);
+                } else {
+                  // Optional: Log a warning if sourceRect is not valid, anchor point will use default.
+                  // $.writeln("Warning: sourceRectAtTime was not valid for layer " + textLayer.name + ". Anchor point not centered geometrically.");
+                }
+              } catch (e_anchor) {
+                // Optional: Log any error during anchor point adjustment.
+                // $.writeln("Error setting anchor point for " + textLayer.name + ": " + e_anchor.toString());
+              }
+              // --- MODIFICATION END: Center Anchor Point ---
               var positionProp = textLayer
                 .property("Transform")
                 .property("Position");
+              // Now that the anchor point is at the geometric center of the text,
+              // setting the position to comp center will align the text's center there.
               positionProp.setValue([comp.width / 2, comp.height / 2]);
 
+              // Adjust scale animation keyframes (will now scale around the new centered anchor point)
               if (frameDuration > 0) {
                 var scaleProp = textLayer
                   .property("Transform")
                   .property("Scale");
-                var keyTime1 = startTime;
-                var keyTime2 = startTime + 3 * frameDuration;
-                var keyTime3 = startTime + 5 * frameDuration;
+                var keyTime1 = adjustedStartTime;
+                var keyTime2 = adjustedStartTime + 3 * frameDuration;
+                var keyTime3 = adjustedStartTime + 5 * frameDuration;
 
                 scaleProp.setValueAtTime(keyTime1, [90, 90]);
                 if (keyTime2 < textLayer.outPoint) {
