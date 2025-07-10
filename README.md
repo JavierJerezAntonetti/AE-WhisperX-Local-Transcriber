@@ -1,8 +1,8 @@
 # AE WhisperX Local Transcriber
 
-Transcribe audio directly within Adobe After Effects using a local WhisperX API. This tool creates styled, word-level text layers from your audio, enabling precise subtitle and kinetic typography workflows.
+Transcribe audio directly within Adobe After Effects using a local WhisperX API. This tool creates styled, word-level text layers from your audio, enabling precise subtitle and kinetic typography workflows. It also includes utilities for arranging and combining the generated text layers.
 
-![Panel Screenshot](https://github.com/user-attachments/assets/ce20222a-fc8c-47b3-ada8-ce34224ca118)
+![Panel Screenshot](https://github.com/user-attachments/assets/f4fec037-9aa9-4a41-bd77-d06ffc2d4573)
 
 ## Table of Contents
 
@@ -17,12 +17,15 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
   - [1. Render Audio (Optional)](#1-render-audio-optional)
   - [2. Configure Text Styling](#2-configure-text-styling)
   - [3. Transcribe Audio](#3-transcribe-audio)
+  - [4. Text Layer Utilities](#4-text-layer-utilities)
 - [API Configuration (Optional)](#api-configuration-optional)
 - [Troubleshooting](#troubleshooting)
 - [For Developers](#for-developers)
   - [Building the .exe](#building-the-exe)
 - [Contributing](#contributing)
 - [License](#license)
+
+---
 
 ## Features
 
@@ -31,9 +34,12 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 * **Word-Level Accuracy:** Creates individual text layers for each word, perfectly timed.
 * **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 * **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
+* **Text Layer Utilities:** Arrange individual word layers into centered paragraphs or combine them into a single, formatted text layer.
 * **Automated Pre-comping:** Generated word layers are automatically grouped into a "Subtitles" pre-comp.
 * **Audio Rendering Utility:** Helper function to quickly render audio from your active AE composition.
 * **Pre-compiled API Option:** Includes a bundled `.exe` for the API server, eliminating the need for users to install Python and dependencies manually.
+
+---
 
 ## How it Works
 
@@ -48,6 +54,9 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
     * The API transcribes the audio using WhisperX, performs word-level alignment, and returns a JSON response with timed words.
     * The AE script parses the JSON, creates a new text layer for each word in your active composition, applies the configured styles, and sets its in/out points.
     * Finally, all created text layers are pre-composed.
+6.  **Arrange/Combine (Optional):** Use the Text Layer Utilities to format the newly created word layers into paragraphs.
+
+---
 
 ## Prerequisites
 
@@ -65,6 +74,8 @@ Before you begin, ensure you have the following installed:
     * If you choose *not* to use the pre-compiled `WhisperX API.exe`, you'll need Python.
     * **Crucially, Python version must be LESS THAN 3.13** (e.g., 3.10, 3.11, 3.12) due to Whisper/WhisperX compatibility. You can download older Python versions from [python.org](https://www.python.org/downloads/).
     * `pip` (Python package installer) is also required.
+
+---
 
 ## Installation & Setup
 
@@ -116,6 +127,8 @@ This method gives you more control and is necessary if you want to modify the AP
     * **Keep this console window open while you are using the After Effects script.**
 5.  **Proceed to [After Effects Script Setup](#after-effects-script-setup).**
 
+---
+
 ## After Effects Script Setup
 
 1.  **Locate the Script:**
@@ -127,6 +140,8 @@ This method gives you more control and is necessary if you want to modify the AP
     * If After Effects was open, you might need to restart it, or go to `Window > Find Script` and select it if AE supports dynamic loading of new panels.
     * The panel should now be available under the "Window" menu in After Effects, titled "Whisper Transcriber & Audio Tools".
 
+---
+
 ## Usage
 
 Once the API is running and the After Effects script is installed:
@@ -136,7 +151,19 @@ Once the API is running and the After Effects script is installed:
 
 ### 1. Render Audio (Optional)
 
-* If your audio is part of your After Effects composition and you want to transcribe it:
+If your audio is part of your After Effects composition and you want to transcribe it, you can use the panel's render button.
+
+* **IMPORTANT:** For this button to work reliably, you must first create an **Output Module Template** in After Effects for rendering WAV audio. You only need to do this once.
+
+* **How to Create the WAV Template:**
+    1.  Go to `Edit > Templates > Output Modules...`.
+    2.  In the Output Module Templates dialog, click **New...**.
+    3.  Set the **Format** to **WAV**.
+    4.  Under **Audio Output**, ensure it is checked and set to your desired sample rate (e.g., 48.000 kHz, 16 Bits, Stereo).
+    5.  In the **Template Name** field at the top, name it exactly `WAV Audio Only`.
+    6.  Click **OK** to save the template.
+
+* **Using the Render Button:**
     1.  Ensure the desired composition is active.
     2.  Click the "**Render Active Comp Audio (WAV)**" button in the panel.
     3.  This will render a `.wav` file to a `Rendered_Audio` subfolder in your project directory.
@@ -144,27 +171,47 @@ Once the API is running and the After Effects script is installed:
 
 ### 2. Configure Text Styling
 
-Before transcribing, you can set the default appearance for the generated text layers:
+Before transcribing, set the default appearance for the generated text layers:
 
-* **Font Name:** Enter the PostScript name of the font (e.g., `ArialMT`, `Poppins-SemiBold`). You can usually find this in font management software or design tools.
+* **Font Name:** The PostScript name of the font (e.g., `ArialMT`, `Poppins-SemiBold`).
 * **Font Size (pt):** The size of the text in points.
-* **Fill Color (R,G,B):** Set the Red, Green, and Blue values for the text fill, each between 0.0 and 1.0 (e.g., White is `1.0, 1.0, 1.0`).
+* **Fill Color (R,G,B):** Red, Green, and Blue values (0.0 to 1.0). White is `1.0, 1.0, 1.0`.
 * **Stroke Width (pt):** The width of the text outline. Set to `0` for no stroke.
-* **Stroke Color (R,G,B):** Set the Red, Green, and Blue values for the text stroke, each between 0.0 and 1.0.
+* **Stroke Color (R,G,B):** Red, Green, and Blue values for the stroke.
 
 ### 3. Transcribe Audio
 
-1.  Ensure your chosen composition is active in After Effects (this is where the text layers will be created).
+1.  Ensure your chosen composition is active (this is where the text layers will be created).
 2.  Click the "**Select Audio File & Start Transcription**" button.
-3.  A file dialog will appear. Select the audio file you want to transcribe (e.g., `.wav`, `.mp3`, `.m4a`).
-4.  The script will send the audio to the local WhisperX API. You'll see activity in the API's console window.
-5.  Once transcription is complete:
-    * Individual text layers for each word will be created in your active composition.
-    * These layers will be styled according to your settings and timed to match the audio.
+3.  Select the audio file you want to transcribe (e.g., `.wav`, `.mp3`, `.m4a`).
+4.  The script sends the audio to the local WhisperX API.
+5.  Once complete:
+    * Individual, styled, and timed text layers for each word will be created.
     * A pop-up will confirm the number of layers created.
-    * All new text layers will be automatically pre-composed into a new comp named "Subtitles".
-      ### Notes:
-    * The text layers are created with a small pop-in effect by keyframing the scale.
+    * All new text layers are automatically pre-composed into a comp named "**Subtitles**".
+    * **Note:** The text layers are created with a small pop-in scale animation.
+
+### 4. Text Layer Utilities
+
+After generating word layers, you can use the utilities to format them into paragraphs. These tools work on any selected text layers.
+
+* **Configuration:**
+    * **Max Chars/Line:** The maximum number of characters allowed on a single line before forcing a line break.
+    * **Max Words/Line:** The maximum number of words allowed on a single line.
+
+* **Arrange Words Side-by-Side:**
+    1.  In your composition (likely inside the "Subtitles" pre-comp), **select the word layers** you want to arrange.
+    2.  Set your desired character and word limits in the panel.
+    3.  Click "**Arrange Words Side-by-Side**".
+    4.  The script will reposition the selected layers to form a centered paragraph, breaking lines when either the character or word limit is reached. The animation and timing of each layer are preserved.
+
+* **Combine Selected Text Layers:**
+    1.  **Select the text layers** you want to merge.
+    2.  Set your desired character and word limits.
+    3.  Click "**Combine Selected Text Layers**".
+    4.  The script combines the text from all selected layers into the *first selected layer*. It applies line breaks based on your limits. All other selected layers are deleted. The timing of the first layer is preserved and extended to cover the duration of all original layers.
+
+---
 
 ## API Configuration (Optional)
 
@@ -172,51 +219,49 @@ You can configure the WhisperX model and language by editing the `whisperAPI.py`
 
 Key variables at the top of `whisperAPI.py`:
 
-* `MODEL_SIZE`: Specifies the Whisper model size. Options include `"tiny"`, `"base"`, `"small"`, `"medium"`, `"large-v1"`, `"large-v2"`, `"large-v3"`. Larger models are more accurate but slower and require more resources. `"large-v3"` is the default.
-    * For non-English languages, some models have multilingual variants (e.g., `tiny.en`, `base.en`). The script currently uses the general models which should autodetect the language.
-* `DEVICE`: Set to `"cpu"` (default) or `"cuda"` if you have an NVIDIA GPU and want to use it for faster processing (requires compatible PyTorch installation).
-* `COMPUTE_TYPE`: Optimization for the model.
-    * For `DEVICE="cpu"`: `"int8"` (default) is generally good.
-    * For `DEVICE="cuda"`: `"float16"` or `"bfloat16"` (if supported) are common.
+* `MODEL_SIZE`: Whisper model size (`"tiny"`, `"base"`, `"small"`, `"medium"`, `"large-v3"`). Larger models are more accurate but slower. `"large-v3"` is the default.
+* `DEVICE`: Set to `"cpu"` (default) or `"cuda"` if you have an NVIDIA GPU.
+* `COMPUTE_TYPE`: Optimization for the model. `"int8"` for CPU, `"float16"` for CUDA are good starting points.
 * `BATCH_SIZE`: Affects transcription speed, especially on GPU. Default is `16`.
 
-If you change these settings after the API has already downloaded models for previous settings, it might need to download new model files when it next starts.
+If you change these settings, the API might need to download new model files on the next run.
+
+---
 
 ## Troubleshooting
 
-* **"API call failed or produced no response file" / "Received HTML instead of JSON" in AE:**
-    * Ensure the `WhisperX API.exe` or `python whisperAPI.py` server is running. Check its console window for errors.
-    * Verify FFmpeg is installed and in your system PATH. The API console will usually show an error if FFmpeg is missing.
-    * Make sure no firewall is blocking local connections to `http://127.0.0.1:5000`.
-    * Check the API console for errors like "Error loading WhisperX model". This could happen if the model download was interrupted or if there's an issue with the cached model files. Try deleting the model cache (usually in `~/.cache/whisperx` or `C:\Users\YourUser\.cache\whisperx`) and letting the API re-download.
+* **"API call failed..." / "Received HTML instead of JSON" in AE:**
+    * Ensure the `WhisperX API.exe` or `python whisperAPI.py` server is running.
+    * Verify FFmpeg is installed and in your system PATH.
+    * Check for firewalls blocking local connections to `http://127.0.0.1:5000`.
 * **"Error calling system command (curl)" in AE:**
     * Ensure `curl` is installed and accessible from your system's command line.
+* **Audio Render Button Fails:**
+    * Make sure you have created the `WAV Audio Only` output module template in After Effects as described in the [Usage section](#1-render-audio-optional).
 * **Slow Transcription:**
-    * Larger audio files will take longer.
-    * Using larger `MODEL_SIZE` (e.g., "large-v3") is more accurate but slower. Consider a smaller model if speed is critical and accuracy is less so.
-    * If you have a compatible NVIDIA GPU, ensure `DEVICE` is set to `"cuda"` in `whisperAPI.py` and you have the correct PyTorch version installed (see Python setup).
+    * Use a smaller `MODEL_SIZE`.
+    * Use a GPU by setting `DEVICE` to `"cuda"` in `whisperAPI.py` (requires correct PyTorch installation).
 * **Incorrect Word Timing / Alignment Issues:**
-    * Clear audio quality is important. Background noise or unclear speech can affect accuracy.
-    * WhisperX alignment quality can vary by language. If alignment fails, the script will still create segment-level text (if available) but without word-level timing.
-* **Python Version Error when running from source:**
-    * Make sure your Python version is less than 3.13 (e.g., 3.10, 3.11, 3.12).
-* **AE Script Not Appearing in Window Menu:**
-    * Double-check that the `.jsx` file is in the correct `ScriptUI Panels` folder for your AE version.
-    * Restart After Effects.
+    * Clear audio quality is crucial. Background noise or unclear speech can affect accuracy.
+* **A critical error occurred in runTranscriptionProcess: ReferenceError: Function wordData.word.trim is undefined At line: 272**
+![Error Screenshot](https://github.com/user-attachments/assets/1a724189-2688-4c81-95f9-e30a9dcee934)
+    * All users with this error seemed to fix it by doing a clean install.
+
+
+---
 
 ## For Developers
 
 ### Building the .exe
 
-The provided `WhisperX API.exe` was bundled using PyInstaller. If you modify `whisperAPI.py` or its dependencies and want to create your own executable:
+The provided `WhisperX API.exe` was bundled using PyInstaller. If you modify `whisperAPI.py` and want to create your own executable:
 
 1.  **Install PyInstaller:**
     ```bash
     pip install pyinstaller
     ```
 2.  **Run the PyInstaller Command:**
-    * Open your terminal/command prompt in the repository's root directory (where `whisperAPI.py` is).
-    * The command used is quite specific due to WhisperX's complex dependencies. You'll need to adjust paths in the `--add-data` arguments to match your Python environment's `site-packages` location.
+    * Open your terminal in the repository's root directory. The command is complex due to dependencies. You **must** adapt the `--add-data` paths to match your Python environment's `site-packages` location.
     * **Example command structure (adapt paths!):**
         ```bash
         pyinstaller --name WhisperX_API --onefile --noconfirm --icon="path/to/your/icon.ico" \
@@ -226,46 +271,24 @@ The provided `WhisperX API.exe` was bundled using PyInstaller. If you modify `wh
         --hidden-import=whisper \
         --hidden-import=whisperx \
         --hidden-import=whisperx.alignment \
-        --hidden-import=whisperx.asr \
-        --hidden-import=whisperx.audio \
-        --hidden-import=whisperx.diarize \
-        --hidden-import=whisperx.types \
-        --hidden-import=whisperx.utils \
         --hidden-import=faster_whisper \
-        --hidden-import=vad \
-        --hidden-import=pyannote.audio \
-        --hidden-import=pyannote.audio.models \
-        --hidden-import=pyannote.audio.pipelines \
-        --hidden-import=asteroid_filterbanks \
-        --hidden-import=sklearn.metrics._pairwise_distances_reduction._middle_term_computer \
-        --add-data "C:\Path\To\Your\Python\Lib\site-packages\lightning_fabric:lightning_fabric" \
-        --add-data "C:\Path\To\Your\Python\Lib\site-packages\speechbrain:speechbrain" \
-        --add-data "C:\Path\To\Your\Python\Lib\site-packages\whisperx:whisperx" \
-        --add-data "C:\Path\To\Your\Python\Lib\site-packages\pyannote\audio:pyannote/audio" \
-        --add-data "C:\Path\To\Your\Python\Lib\site-packages\asteroid_filterbanks:asteroid_filterbanks" \
+        --add-data "C:\Path\To\venv\Lib\site-packages\whisperx:whisperx" \
+        --add-data "C:\Path\To\venv\Lib\site-packages\pyannote\audio:pyannote/audio" \
         whisperAPI.py
         ```
-    * Replace `"C:\Path\To\Your\Python\Lib\site-packages..."` with the actual path to these packages in your Python environment (especially if using a virtual environment). You can find your site-packages path by running:
+    * Find your `site-packages` path by running:
         ```python
         import site; print(site.getsitepackages())
         ```
-    * The `--icon` argument is optional.
-3.  The `.exe` will be created in a `dist` subfolder.
+
+---
 
 ## Contributing
 
-Contributions are welcome! If you have improvements, bug fixes, or new features:
+Contributions are welcome! Fork the repository, create a new branch, make your changes, and open a Pull Request.
 
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/YourAmazingFeature`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-5.  Push to the branch (`git push origin feature/YourAmazingFeature`).
-6.  Open a Pull Request.
-
-Please try to follow existing code style and provide clear descriptions of your changes.
+---
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
----
