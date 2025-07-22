@@ -271,16 +271,14 @@
           for (var j = 0; j < segment.words.length; j++) {
             var wordData = segment.words[j];
 
-            // This prevents a "Function wordData.word.trim is undefined" error
-            // if the API returns a number or null instead of a string for a word.
             var wordText = "";
             if (
               wordData &&
               typeof wordData.word !== "undefined" &&
               wordData.word !== null
             ) {
-              // Coerce to string before trimming.
-              wordText = String(wordData.word).trim();
+              // Coerce to string.
+              wordText = String(wordData.word);
             }
 
             if (wordText.slice(-1) === ".") {
@@ -742,7 +740,7 @@
 
       for (var i = 0; i < textLayers.length; i++) {
         var layer = textLayers[i];
-        var word = layer.property("Source Text").value.text.trim();
+        var word = layer.property("Source Text").value.text;
         if (word === "") continue;
 
         var wouldExceedLimits =
@@ -878,7 +876,7 @@
       var lastLayerOutPoint = textLayers[textLayers.length - 1].outPoint;
 
       for (var i = 0; i < textLayers.length; i++) {
-        var layerText = textLayers[i].property("Source Text").value.text.trim();
+        var layerText = textLayers[i].property("Source Text").value.text;
         if (layerText === "") continue;
 
         var wordsInLayer = layerText.split(/\s+/); // Split by spaces
