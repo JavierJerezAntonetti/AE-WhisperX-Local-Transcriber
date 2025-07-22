@@ -1,7 +1,7 @@
 // Script Name: Whisper Transcriber Panel (Word-Level - Select Audio & Render & Precomp Preset)
 // Description: Prompts user to select an audio file, transcribes it using a local WhisperX API,
-//               and creates individual, styled text layers for each WORD.
-//               Also includes a button to render audio from the active composition.
+//              and creates individual, styled text layers for each WORD.
+//              Also includes a button to render audio from the active composition.
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
@@ -270,7 +270,19 @@
 
           for (var j = 0; j < segment.words.length; j++) {
             var wordData = segment.words[j];
-            var wordText = wordData.word ? wordData.word.trim() : "";
+
+            // This prevents a "Function wordData.word.trim is undefined" error
+            // if the API returns a number or null instead of a string for a word.
+            var wordText = "";
+            if (
+              wordData &&
+              typeof wordData.word !== "undefined" &&
+              wordData.word !== null
+            ) {
+              // Coerce to string before trimming.
+              wordText = String(wordData.word).trim();
+            }
+
             if (wordText.slice(-1) === ".") {
               wordText = wordText.slice(0, -1);
             }
@@ -378,7 +390,7 @@
                 var rect = textLayer.sourceRectAtTime(adjustedStartTime, false);
                 if (rect && rect.width > 0 && rect.height > 0) {
                   var newAnchorX = rect.left + rect.width / 2;
-                  // The fix is here: Set the vertical anchor to 0 (the baseline)
+                  // Set the vertical anchor to 0 (the baseline)
                   // instead of the geometric center of the bounding box.
                   var newAnchorY = 0;
                   textLayer
