@@ -243,10 +243,6 @@ If you change these settings, the API might need to download new model files on 
     * Use a GPU by setting `DEVICE` to `"cuda"` in `whisperAPI.py` (requires correct PyTorch installation).
 * **Incorrect Word Timing / Alignment Issues:**
     * Clear audio quality is crucial. Background noise or unclear speech can affect accuracy.
-* **A critical error occurred in runTranscriptionProcess: ReferenceError: Function wordData.word.trim is undefined At line: 272**
-![Error Screenshot](https://github.com/user-attachments/assets/1a724189-2688-4c81-95f9-e30a9dcee934)
-    * All users with this error seemed to fix it by doing a clean install.
-
 
 ---
 
