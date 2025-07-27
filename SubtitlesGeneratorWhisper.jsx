@@ -36,12 +36,12 @@
   var maxCharsInput, maxWordsInput;
 
   // --- Helper Function to sanitize file names ---
-  function sanitizeFileName(name) {
+  var sanitizeFileName = function (name) {
     return name.replace(/[\\\/\:\*\?\"\<\>\|]/g, "_"); // Replace invalid characters
-  }
+  };
 
   // --- Main Transcription Function ---
-  function runTranscriptionProcess(selectedAudioFile) {
+  var runTranscriptionProcess = function (selectedAudioFile) {
     if (!selectedAudioFile || !selectedAudioFile.exists) {
       alert(
         "Critical script error: Selected audio file is invalid. Please report this."
@@ -471,9 +471,9 @@
               );
               if (subtitlePrecompLayer) {
                 // alert(
-                //   "Created word layers have been pre-composed into '" +
-                //     PRECOMP_NAME +
-                //     "'."
+                //  "Created word layers have been pre-composed into '" +
+                //    PRECOMP_NAME +
+                //    "'."
                 // ); // Removed success alert
               } else {
                 alert("Failed to pre-compose the subtitle layers.");
@@ -489,7 +489,7 @@
         fullTextLayer.inPoint = 0;
         fullTextLayer.outPoint = comp.duration > 0 ? comp.duration : 10;
         // alert(
-        //   "Transcription complete! Full text layer created (no segment/word data found)."
+        //  "Transcription complete! Full text layer created (no segment/word data found)."
         // ); // Removed success alert
       } else {
         var noDataMsg =
@@ -531,10 +531,10 @@
         app.endUndoGroup();
       } catch (e_undo) {}
     }
-  }
+  };
 
   // --- Function to Render Active Comp Audio ---
-  function renderActiveCompAudio() {
+  var renderActiveCompAudio = function () {
     app.beginUndoGroup("Render Comp Audio");
     try {
       var proj = app.project;
@@ -678,17 +678,17 @@
       );
       app.endUndoGroup();
     }
-  }
+  };
 
-  function indexOfArray(arr, item) {
+  var indexOfArray = function (arr, item) {
     for (var i = 0; i < arr.length; i++) {
       if (arr[i] === item) return i;
     }
     return -1;
-  }
+  };
 
   // --- Function to Arrange Selected Text Layers Side-by-Side ---
-  function arrangeWordsSideBySide() {
+  var arrangeWordsSideBySide = function () {
     app.beginUndoGroup("Arrange Words in Paragraph");
     try {
       var comp = app.project.activeItem;
@@ -823,10 +823,10 @@
     } finally {
       app.endUndoGroup();
     }
-  }
+  };
 
   // --- Function to Combine Selected Text Layers ---
-  function combineSelectedTextLayers() {
+  var combineSelectedTextLayers = function () {
     app.beginUndoGroup("Combine Text Layers");
     try {
       var comp = app.project.activeItem;
@@ -954,9 +954,9 @@
       }
 
       // alert(
-      //   "Selected " +
-      //     textLayers.length +
-      //     " text layers combined into one layer, preserving the first layer's animation."
+      //  "Selected " +
+      //    textLayers.length +
+      //    " text layers combined into one layer, preserving the first layer's animation."
       // ); // Removed success alert
     } catch (e) {
       alert(
@@ -965,10 +965,10 @@
     } finally {
       app.endUndoGroup();
     }
-  }
+  };
 
   var win;
-  function buildUI(uiTargetObj) {
+  var buildUI = function (uiTargetObj) {
     win =
       uiTargetObj instanceof Panel
         ? uiTargetObj
@@ -1196,7 +1196,7 @@
       this.layout.resize();
     };
     return win;
-  }
+  };
 
   var uiObject = buildUI(thisObj);
 
