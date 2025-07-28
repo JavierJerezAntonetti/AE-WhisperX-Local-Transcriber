@@ -5,6 +5,9 @@
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
+  var SCRIPT_VERSION = "2.0"; // Current version of the script
+  var GITHUB_RAW_URL =
+    "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
   var TEMP_FOLDER_PATH;
 
@@ -1093,6 +1096,65 @@
     }
   };
 
+  // --- Function to check for script updates from GitHub ---
+  var checkForUpdates = function () {
+    if (GITHUB_RAW_URL.indexOf("YOUR_USERNAME") > -1) {
+      // Don't run if the URL is still the placeholder
+      return;
+    }
+
+    var tempFile = new File(Folder.temp.fsName + "/ae_script_update_check.jsx");
+
+    try {
+      var curlCommand;
+      var tempFilePathForCurl = tempFile.fsName.replace(/\\/g, "/");
+
+      // Use -L to follow redirects, which is common with raw GitHub URLs
+      curlCommand =
+        'curl -s -L "' + GITHUB_RAW_URL + '" -o "' + tempFilePathForCurl + '"';
+
+      if ($.os.indexOf("Windows") > -1) {
+        system.callSystem('cmd.exe /c "' + curlCommand + '"');
+      } else {
+        system.callSystem(curlCommand);
+      }
+
+      if (tempFile.exists && tempFile.length > 0) {
+        tempFile.open("r");
+        var remoteContent = tempFile.read();
+        tempFile.close();
+        tempFile.remove();
+
+        // Use regex to find the version string in the remote file
+        var versionRegex = /var\s+SCRIPT_VERSION\s*=\s*["']([^"']+)["']/;
+        var match = remoteContent.match(versionRegex);
+
+        if (match && match[1]) {
+          var remoteVersion = match[1];
+          if (remoteVersion !== SCRIPT_VERSION) {
+            alert(
+              "A new version of the script is available!\n\nYour Version: " +
+                SCRIPT_VERSION +
+                "\nLatest Version: " +
+                remoteVersion +
+                "\n\nPlease visit the GitHub repository to download the update."
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Silently fail on any error to not disrupt the user's workflow.
+      // You could write to the console for debugging if needed:
+      // $.writeln("Update check failed: " + e.toString());
+    } finally {
+      if (tempFile.exists) {
+        try {
+          tempFile.remove();
+        } catch (e_remove) {}
+      }
+    }
+  };
+
   var win;
   var buildUI = function (uiTargetObj) {
     win =
@@ -1571,5 +1633,7 @@
         win.layout.layout(true); // Apply layout to the panel
       }
     }
+    // Run the update check after the UI has been built and is ready to be shown
+    checkForUpdates();
   }
 })(this);
