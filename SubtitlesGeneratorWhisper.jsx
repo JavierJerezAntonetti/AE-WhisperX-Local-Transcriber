@@ -480,11 +480,24 @@
                   textDocument.applyStroke = true;
                   textDocument.strokeColor = currentStrokeColor;
                   textDocument.strokeWidth = currentStrokeWidth;
-                  textDocument.strokeOverFill = true;
+                  textDocument.strokeOverFill = false;
+                  textDocument.lineJoinType = LineJoinType.LINE_JOIN_ROUND;
                 } else {
                   textDocument.applyStroke = false;
                 }
                 textProp.setValue(textDocument);
+              }
+
+              // Set layer-level render order to "All Fills Over All Strokes"
+              try {
+                var textLayerMoreOptions = textLayer
+                  .property("Text")
+                  .property("More Options");
+                if (textLayerMoreOptions) {
+                  textLayerMoreOptions.property("Fill & Stroke").setValue(2); // 2 = All Fills Over All Strokes
+                }
+              } catch (e_render_order) {
+                // This might fail on very old AE versions, but it's safe to ignore.
               }
 
               try {
@@ -1185,7 +1198,9 @@
         isFontDropdown = false;
         // Remove dropdown if it was added
         if (fontNameInput) {
-            try { fontNameGroup.remove(fontNameInput); } catch(e_rem) {}
+          try {
+            fontNameGroup.remove(fontNameInput);
+          } catch (e_rem) {}
         }
         fontNameInput = fontNameGroup.add(
           "edittext",
@@ -1386,10 +1401,13 @@
       if (!settings) return;
 
       if (isFontDropdown) {
-        var fontToSelect = settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+        var fontToSelect =
+          settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
         var foundFont = false;
         for (var i = 0; i < fontNameInput.items.length; i++) {
-          if (fontNameInput.items[i].properties.postScriptName === fontToSelect) {
+          if (
+            fontNameInput.items[i].properties.postScriptName === fontToSelect
+          ) {
             fontNameInput.selection = i;
             foundFont = true;
             break;
@@ -1400,16 +1418,32 @@
           if (fontNameInput.items.length > 0) fontNameInput.selection = 0;
         }
       } else {
-        fontNameInput.text = settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+        fontNameInput.text =
+          settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
       }
       fontSizeInput.text = settings.fontSize || DEFAULT_TEXT_FONT_SIZE;
-      fillRInput.text = settings.fillColor ? settings.fillColor[0] : DEFAULT_TEXT_FILL_COLOR[0];
-      fillGInput.text = settings.fillColor ? settings.fillColor[1] : DEFAULT_TEXT_FILL_COLOR[1];
-      fillBInput.text = settings.fillColor ? settings.fillColor[2] : DEFAULT_TEXT_FILL_COLOR[2];
-      strokeWidthInput.text = typeof settings.strokeWidth !== "undefined" ? settings.strokeWidth : DEFAULT_TEXT_STROKE_WIDTH;
-      strokeRInput.text = settings.strokeColor ? settings.strokeColor[0] : DEFAULT_TEXT_STROKE_COLOR[0];
-      strokeGInput.text = settings.strokeColor ? settings.strokeColor[1] : DEFAULT_TEXT_STROKE_COLOR[1];
-      strokeBInput.text = settings.strokeColor ? settings.strokeColor[2] : DEFAULT_TEXT_STROKE_COLOR[2];
+      fillRInput.text = settings.fillColor
+        ? settings.fillColor[0]
+        : DEFAULT_TEXT_FILL_COLOR[0];
+      fillGInput.text = settings.fillColor
+        ? settings.fillColor[1]
+        : DEFAULT_TEXT_FILL_COLOR[1];
+      fillBInput.text = settings.fillColor
+        ? settings.fillColor[2]
+        : DEFAULT_TEXT_FILL_COLOR[2];
+      strokeWidthInput.text =
+        typeof settings.strokeWidth !== "undefined"
+          ? settings.strokeWidth
+          : DEFAULT_TEXT_STROKE_WIDTH;
+      strokeRInput.text = settings.strokeColor
+        ? settings.strokeColor[0]
+        : DEFAULT_TEXT_STROKE_COLOR[0];
+      strokeGInput.text = settings.strokeColor
+        ? settings.strokeColor[1]
+        : DEFAULT_TEXT_STROKE_COLOR[1];
+      strokeBInput.text = settings.strokeColor
+        ? settings.strokeColor[2]
+        : DEFAULT_TEXT_STROKE_COLOR[2];
       maxCharsInput.text = settings.maxChars || DEFAULT_MAX_CHARS_PER_LINE;
       maxWordsInput.text = settings.maxWords || DEFAULT_MAX_WORDS_PER_LINE;
     };
@@ -1446,7 +1480,11 @@
           fontSize: fontSizeInput.text,
           fillColor: [fillRInput.text, fillGInput.text, fillBInput.text],
           strokeWidth: strokeWidthInput.text,
-          strokeColor: [strokeRInput.text, strokeGInput.text, strokeBInput.text],
+          strokeColor: [
+            strokeRInput.text,
+            strokeGInput.text,
+            strokeBInput.text,
+          ],
           maxChars: maxCharsInput.text,
           maxWords: maxWordsInput.text,
         };
@@ -1507,12 +1545,11 @@
         }
       }
     } else if (presetDropdown.items.length > 0) {
-        presetDropdown.selection = 0; // Select first one if no last preset is stored
+      presetDropdown.selection = 0; // Select first one if no last preset is stored
     }
     if (presetDropdown.selection) {
-        applyPresetToUI(presetDropdown.selection.text);
+      applyPresetToUI(presetDropdown.selection.text);
     }
-
 
     win.layout.layout(true);
     win.layout.resize();
