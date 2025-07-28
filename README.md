@@ -34,6 +34,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 - **Word-Level Accuracy:** Creates individual text layers for each word, perfectly timed.
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
+- **Dynamic Font Selector:** Automatically populates a dropdown with all system fonts on After Effects 24.0+, with a fallback to manual input for older versions.
 - **Preset System:** Save and load different text styling and layout configurations. Your last used preset is automatically loaded when you restart After Effects.
 - **Text Layer Utilities:** Arrange individual word layers into centered paragraphs or combine them into a single, formatted text layer.
 - **Right-to-Left (RTL) Language Support:** Automatically detects RTL languages (like Arabic, Hebrew) and provides a manual override for correct layout when arranging or combining text.
@@ -182,7 +183,7 @@ The panel includes a preset system to save and quickly load your favorite settin
 
 Before transcribing, you can either load a preset or manually set the appearance for the generated text layers:
 
-- **Font Name:** The PostScript name of the font (e.g., `ArialMT`, `Poppins-SemiBold`).
+- **Font Name:** On After Effects 24.0 and newer, this is a dropdown list of all fonts installed on your system. On older versions, you must enter the PostScript name of the font manually (e.g., `ArialMT`, `Poppins-SemiBold`).
 - **Font Size (pt):** The size of the text in points.
 - **Fill Color (R,G,B):** Red, Green, and Blue values (0.0 to 1.0). White is `1.0, 1.0, 1.0`.
 - **Stroke Width (pt):** The width of the text outline. Set to `0` for no stroke.

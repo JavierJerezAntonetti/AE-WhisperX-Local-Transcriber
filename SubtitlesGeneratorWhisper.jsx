@@ -34,6 +34,7 @@
 
   // --- UI Element Variables (will be defined in buildUI) ---
   var fontNameInput, fontSizeInput;
+  var isFontDropdown = false; // Flag to check if font input is a dropdown
   var fillRInput, fillGInput, fillBInput;
   var strokeRInput, strokeGInput, strokeBInput;
   var strokeWidthInput;
@@ -141,8 +142,15 @@
       }
 
       // --- Get Styling Values from UI ---
-      var currentFontName =
-        fontNameInput.text || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+      var currentFontName;
+      if (isFontDropdown) {
+        currentFontName = fontNameInput.selection
+          ? fontNameInput.selection.properties.postScriptName
+          : DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+      } else {
+        currentFontName =
+          fontNameInput.text || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+      }
       var currentFontSize = parseFloat(fontSizeInput.text);
       if (isNaN(currentFontSize) || currentFontSize <= 0) {
         currentFontSize = DEFAULT_TEXT_FONT_SIZE;
@@ -1143,14 +1151,63 @@
     var fontNameGroup = stylePanel.add("group");
     fontNameGroup.orientation = "row";
     fontNameGroup.add("statictext", undefined, "Font Name:");
-    fontNameInput = fontNameGroup.add(
-      "edittext",
-      undefined,
-      DEFAULT_TEXT_FONT_POSTSCRIPT_NAME
-    );
-    fontNameInput.characters = 25;
-    fontNameInput.helpTip =
-      "Enter the PostScript name of the font (e.g., ArialMT, TimesNewRomanPSMT, Poppins-SemiBold).";
+
+    // Check for After Effects 24.0+ font API
+    if (app.fonts && typeof app.fonts.allFonts !== "undefined") {
+      isFontDropdown = true;
+      fontNameInput = fontNameGroup.add("dropdownlist", undefined, []);
+      fontNameInput.size = [220, 25];
+      fontNameInput.helpTip = "Select a font from your system.";
+
+      try {
+        var allFonts = app.fonts.allFonts;
+        var defaultFontFound = false;
+        for (var i = 0; i < allFonts.length; i++) {
+          var familyGroup = allFonts[i];
+          for (var j = 0; j < familyGroup.length; j++) {
+            var font = familyGroup[j];
+            if (font && font.postScriptName) {
+              var displayName = font.familyName + " - " + font.styleName;
+              var item = fontNameInput.add("item", displayName);
+              item.properties = { postScriptName: font.postScriptName };
+              if (font.postScriptName === DEFAULT_TEXT_FONT_POSTSCRIPT_NAME) {
+                fontNameInput.selection = item;
+                defaultFontFound = true;
+              }
+            }
+          }
+        }
+        if (!defaultFontFound && fontNameInput.items.length > 0) {
+          fontNameInput.selection = 0; // Select first font if default not found
+        }
+      } catch (e) {
+        // Fallback in case of error with font API
+        isFontDropdown = false;
+        // Remove dropdown if it was added
+        if (fontNameInput) {
+            try { fontNameGroup.remove(fontNameInput); } catch(e_rem) {}
+        }
+        fontNameInput = fontNameGroup.add(
+          "edittext",
+          undefined,
+          DEFAULT_TEXT_FONT_POSTSCRIPT_NAME
+        );
+        fontNameInput.characters = 25;
+        fontNameInput.helpTip =
+          "Font dropdown failed. Enter PostScript name (e.g., ArialMT, Poppins-SemiBold).";
+      }
+    } else {
+      // Fallback for older AE versions
+      isFontDropdown = false;
+      fontNameInput = fontNameGroup.add(
+        "edittext",
+        undefined,
+        DEFAULT_TEXT_FONT_POSTSCRIPT_NAME
+      );
+      fontNameInput.characters = 25;
+      fontNameInput.helpTip =
+        "Enter the PostScript name of the font (e.g., ArialMT, TimesNewRomanPSMT, Poppins-SemiBold).";
+    }
 
     var fontSizeGroup = stylePanel.add("group");
     fontSizeGroup.orientation = "row";
@@ -1328,7 +1385,23 @@
       var settings = loadPreset(presetName);
       if (!settings) return;
 
-      fontNameInput.text = settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+      if (isFontDropdown) {
+        var fontToSelect = settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+        var foundFont = false;
+        for (var i = 0; i < fontNameInput.items.length; i++) {
+          if (fontNameInput.items[i].properties.postScriptName === fontToSelect) {
+            fontNameInput.selection = i;
+            foundFont = true;
+            break;
+          }
+        }
+        if (!foundFont) {
+          // If font not found, select default or first item
+          if (fontNameInput.items.length > 0) fontNameInput.selection = 0;
+        }
+      } else {
+        fontNameInput.text = settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+      }
       fontSizeInput.text = settings.fontSize || DEFAULT_TEXT_FONT_SIZE;
       fillRInput.text = settings.fillColor ? settings.fillColor[0] : DEFAULT_TEXT_FILL_COLOR[0];
       fillGInput.text = settings.fillColor ? settings.fillColor[1] : DEFAULT_TEXT_FILL_COLOR[1];
@@ -1360,8 +1433,16 @@
     savePresetBtn.onClick = function () {
       var presetName = prompt("Enter a name for this preset:", "My Preset");
       if (presetName) {
+        var fontValue;
+        if (isFontDropdown) {
+          fontValue = fontNameInput.selection
+            ? fontNameInput.selection.properties.postScriptName
+            : "";
+        } else {
+          fontValue = fontNameInput.text;
+        }
         var settings = {
-          fontName: fontNameInput.text,
+          fontName: fontValue,
           fontSize: fontSizeInput.text,
           fillColor: [fillRInput.text, fillGInput.text, fillBInput.text],
           strokeWidth: strokeWidthInput.text,
