@@ -39,10 +39,83 @@
   var strokeWidthInput;
   var maxCharsInput, maxWordsInput;
   var forceRtlCheckbox;
+  var presetDropdown, savePresetBtn, deletePresetBtn; // Preset UI elements
+
+  // --- Settings & Preset Configuration ---
+  var SETTINGS_SECTION = "WhisperTranscriberPanel";
+  var PRESET_LIST_KEY = "PresetList";
+  var LAST_PRESET_KEY = "LastUsedPreset";
+  var PRESET_PREFIX = "Preset_";
 
   // --- Helper Function to sanitize file names ---
   var sanitizeFileName = function (name) {
     return name.replace(/[\\\/\:\*\?\"\<\>\|]/g, "_"); // Replace invalid characters
+  };
+
+  // --- Preset Management Functions ---
+  var getSetting = function (key) {
+    if (app.settings.haveSetting(SETTINGS_SECTION, key)) {
+      return app.settings.getSetting(SETTINGS_SECTION, key);
+    }
+    return null;
+  };
+
+  var saveSetting = function (key, value) {
+    app.settings.saveSetting(SETTINGS_SECTION, key, value);
+  };
+
+  var deleteSetting = function (key) {
+    if (app.settings.haveSetting(SETTINGS_SECTION, key)) {
+      // AE has no direct delete, so we save an empty string or a specific marker
+      app.settings.saveSetting(SETTINGS_SECTION, key, "");
+    }
+  };
+
+  var getPresetList = function () {
+    var listStr = getSetting(PRESET_LIST_KEY);
+    if (listStr) {
+      try {
+        return JSON.parse(listStr);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  var savePresetList = function (list) {
+    saveSetting(PRESET_LIST_KEY, JSON.stringify(list));
+  };
+
+  var loadPreset = function (presetName) {
+    var presetStr = getSetting(PRESET_PREFIX + presetName);
+    if (presetStr) {
+      try {
+        return JSON.parse(presetStr);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  var savePreset = function (presetName, settingsObj) {
+    saveSetting(PRESET_PREFIX + presetName, JSON.stringify(settingsObj));
+    var presetList = getPresetList();
+    if (indexOfArray(presetList, presetName) === -1) {
+      presetList.push(presetName);
+      savePresetList(presetList);
+    }
+  };
+
+  var deletePreset = function (presetName) {
+    deleteSetting(PRESET_PREFIX + presetName);
+    var presetList = getPresetList();
+    var index = indexOfArray(presetList, presetName);
+    if (index > -1) {
+      presetList.splice(index, 1);
+      savePresetList(presetList);
+    }
   };
 
   // --- Main Transcription Function ---
@@ -1021,6 +1094,25 @@
     win.spacing = 10;
     win.margins = 15;
 
+    // --- Preset Panel ---
+    var presetPanel = win.add("panel", undefined, "Presets");
+    presetPanel.orientation = "row";
+    presetPanel.alignChildren = ["left", "center"];
+    presetPanel.spacing = 10;
+    presetPanel.margins = 10;
+
+    presetDropdown = presetPanel.add("dropdownlist", undefined, []);
+    presetDropdown.size = [180, 25];
+    presetDropdown.helpTip = "Select a saved settings preset.";
+
+    savePresetBtn = presetPanel.add("button", undefined, "Save");
+    savePresetBtn.size = [60, 25];
+    savePresetBtn.helpTip = "Save the current settings as a new preset.";
+
+    deletePresetBtn = presetPanel.add("button", undefined, "Delete");
+    deletePresetBtn.size = [60, 25];
+    deletePresetBtn.helpTip = "Delete the selected preset.";
+
     win.add("statictext", undefined, "1. Render Audio (Optional):").alignment =
       "left";
     var renderAudioBtn = win.add(
@@ -1230,6 +1322,116 @@
     forceRtlCheckbox.value = isRtlMode;
     forceRtlCheckbox.helpTip =
       "Forces Right-to-Left layout for 'Arrange' and 'Combine' functions. Automatically checked if an RTL language is detected during transcription.";
+
+    // --- UI LOGIC FOR PRESETS ---
+    var applyPresetToUI = function (presetName) {
+      var settings = loadPreset(presetName);
+      if (!settings) return;
+
+      fontNameInput.text = settings.fontName || DEFAULT_TEXT_FONT_POSTSCRIPT_NAME;
+      fontSizeInput.text = settings.fontSize || DEFAULT_TEXT_FONT_SIZE;
+      fillRInput.text = settings.fillColor ? settings.fillColor[0] : DEFAULT_TEXT_FILL_COLOR[0];
+      fillGInput.text = settings.fillColor ? settings.fillColor[1] : DEFAULT_TEXT_FILL_COLOR[1];
+      fillBInput.text = settings.fillColor ? settings.fillColor[2] : DEFAULT_TEXT_FILL_COLOR[2];
+      strokeWidthInput.text = typeof settings.strokeWidth !== "undefined" ? settings.strokeWidth : DEFAULT_TEXT_STROKE_WIDTH;
+      strokeRInput.text = settings.strokeColor ? settings.strokeColor[0] : DEFAULT_TEXT_STROKE_COLOR[0];
+      strokeGInput.text = settings.strokeColor ? settings.strokeColor[1] : DEFAULT_TEXT_STROKE_COLOR[1];
+      strokeBInput.text = settings.strokeColor ? settings.strokeColor[2] : DEFAULT_TEXT_STROKE_COLOR[2];
+      maxCharsInput.text = settings.maxChars || DEFAULT_MAX_CHARS_PER_LINE;
+      maxWordsInput.text = settings.maxWords || DEFAULT_MAX_WORDS_PER_LINE;
+    };
+
+    var populatePresetDropdown = function () {
+      var presets = getPresetList();
+      presetDropdown.removeAll();
+      for (var i = 0; i < presets.length; i++) {
+        presetDropdown.add("item", presets[i]);
+      }
+    };
+
+    presetDropdown.onChange = function () {
+      if (presetDropdown.selection) {
+        var selectedPreset = presetDropdown.selection.text;
+        applyPresetToUI(selectedPreset);
+        saveSetting(LAST_PRESET_KEY, selectedPreset);
+      }
+    };
+
+    savePresetBtn.onClick = function () {
+      var presetName = prompt("Enter a name for this preset:", "My Preset");
+      if (presetName) {
+        var settings = {
+          fontName: fontNameInput.text,
+          fontSize: fontSizeInput.text,
+          fillColor: [fillRInput.text, fillGInput.text, fillBInput.text],
+          strokeWidth: strokeWidthInput.text,
+          strokeColor: [strokeRInput.text, strokeGInput.text, strokeBInput.text],
+          maxChars: maxCharsInput.text,
+          maxWords: maxWordsInput.text,
+        };
+        savePreset(presetName, settings);
+        populatePresetDropdown();
+        // Find and select the new preset
+        for (var i = 0; i < presetDropdown.items.length; i++) {
+          if (presetDropdown.items[i].text === presetName) {
+            presetDropdown.selection = i;
+            break;
+          }
+        }
+        saveSetting(LAST_PRESET_KEY, presetName);
+      }
+    };
+
+    deletePresetBtn.onClick = function () {
+      if (presetDropdown.selection) {
+        var presetNameToDelete = presetDropdown.selection.text;
+        if (
+          confirm(
+            "Are you sure you want to delete the preset '" +
+              presetNameToDelete +
+              "'?"
+          )
+        ) {
+          deletePreset(presetNameToDelete);
+          populatePresetDropdown();
+          if (presetDropdown.items.length > 0) {
+            presetDropdown.selection = 0;
+            saveSetting(LAST_PRESET_KEY, presetDropdown.selection.text);
+          } else {
+            saveSetting(LAST_PRESET_KEY, ""); // No presets left
+          }
+        }
+      } else {
+        alert("Please select a preset to delete.");
+      }
+    };
+
+    // --- Initial Load ---
+    populatePresetDropdown();
+    var lastPreset = getSetting(LAST_PRESET_KEY);
+    if (lastPreset) {
+      var found = false;
+      for (var i = 0; i < presetDropdown.items.length; i++) {
+        if (presetDropdown.items[i].text === lastPreset) {
+          presetDropdown.selection = i;
+          applyPresetToUI(lastPreset);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Last preset was deleted, select first if available
+        if (presetDropdown.items.length > 0) {
+          presetDropdown.selection = 0;
+        }
+      }
+    } else if (presetDropdown.items.length > 0) {
+        presetDropdown.selection = 0; // Select first one if no last preset is stored
+    }
+    if (presetDropdown.selection) {
+        applyPresetToUI(presetDropdown.selection.text);
+    }
+
 
     win.layout.layout(true);
     win.layout.resize();
