@@ -199,7 +199,7 @@ After generating word layers, you can use the utilities to format them into para
 * **Configuration:**
     * **Max Chars/Line:** The maximum number of characters allowed on a single line before forcing a line break.
     * **Max Words/Line:** The maximum number of words allowed on a single line.
-    * **Force RTL Layout:** A checkbox to manually enable Right-to-Left layout. This is automatically checked if an RTL language (e.g., Arabic, Hebrew) is detected during transcription, but can be toggled manually for any set of layers.
+    * **Force RTL Layout:** A checkbox to manually enable Right-to-Left layout for the **Arrange Words Side-by-Side** function. This is automatically checked if an RTL language (e.g., Arabic, Hebrew) is detected during transcription, but can be toggled manually.
 
 * **Arrange Words Side-by-Side:**
     1.  In your composition (likely inside the "Subtitles" pre-comp), **select the word layers** you want to arrange.
@@ -211,7 +211,7 @@ After generating word layers, you can use the utilities to format them into para
     1.  **Select the text layers** you want to merge.
     2.  Set your desired character and word limits.
     3.  Click "**Combine Selected Text Layers**".
-    4.  The script combines the text from all selected layers into the *first selected layer*. It applies line breaks based on your limits. All other selected layers are deleted. The timing of the first layer is preserved and extended to cover the duration of all original layers. If RTL mode is active, the order of words on each line will be reversed to ensure correct display.
+    4.  The script combines the text from all selected layers into the *first selected layer*. It applies line breaks based on your limits. All other selected layers are deleted. The timing of the first layer is preserved and extended to cover the duration of all original layers. After Effects' text engine will automatically handle the correct display order for RTL languages.
 
 ---
 

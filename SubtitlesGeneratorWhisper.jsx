@@ -924,9 +924,6 @@
               currentLine.length + 1 + word.length > maxChars
             ) {
               // Line break condition met
-              if (useRtl) {
-                currentLine = currentLine.split(" ").reverse().join(" ");
-              }
               combinedTextContent += currentLine + "\r"; // Add current line to main text with a newline
               currentLine = word; // Start new line with current word
               currentLineWordCount = 1;
@@ -943,9 +940,6 @@
         }
       }
       if (currentLine !== "") {
-        if (useRtl) {
-          currentLine = currentLine.split(" ").reverse().join(" ");
-        }
         combinedTextContent += currentLine; // Add the last line
       }
 
