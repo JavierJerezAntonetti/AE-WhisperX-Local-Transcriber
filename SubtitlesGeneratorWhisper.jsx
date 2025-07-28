@@ -19,6 +19,10 @@
   var RENDERED_AUDIO_SUBFOLDER = "Rendered_Audio";
   var PRECOMP_NAME = "Subtitles";
 
+  // --- RTL Configuration ---
+  var RTL_LANGUAGES = ["ar", "he", "fa", "ur", "yi", "syr", "dv"]; // Arabic, Hebrew, Persian, Urdu, Yiddish, Syriac, Dhivehi
+  var isRtlMode = false; // Global flag for RTL processing
+
   // --- Styling Configuration (These are now DEFAULTS for UI inputs) ---
   var DEFAULT_TEXT_FONT_POSTSCRIPT_NAME = "Poppins-SemiBold";
   var DEFAULT_TEXT_FONT_SIZE = 60;
@@ -34,6 +38,7 @@
   var strokeRInput, strokeGInput, strokeBInput;
   var strokeWidthInput;
   var maxCharsInput, maxWordsInput;
+  var forceRtlCheckbox;
 
   // --- Helper Function to sanitize file names ---
   var sanitizeFileName = function (name) {
@@ -236,6 +241,23 @@
         if (responseFile.exists) responseFile.remove();
         app.endUndoGroup();
         return;
+      }
+
+      // --- RTL Detection ---
+      isRtlMode = forceRtlCheckbox.value; // Set based on UI first
+      if (
+        !isRtlMode &&
+        transcriptionData &&
+        transcriptionData.language &&
+        indexOfArray(RTL_LANGUAGES, transcriptionData.language) > -1
+      ) {
+        isRtlMode = true;
+        forceRtlCheckbox.value = true; // Update the UI checkbox state
+        alert(
+          "RTL language '" +
+            transcriptionData.language +
+            "' detected. RTL layout will be used for arrangement/combination functions. You can override this with the 'Force RTL' checkbox."
+        );
       }
 
       var createdTextLayers = [];
@@ -722,6 +744,8 @@
         alert("Invalid Max Words Per Line. Using default: " + maxWords);
       }
 
+      var useRtl = forceRtlCheckbox.value;
+
       textLayers.sort(function (a, b) {
         return a.inPoint - b.inPoint;
       });
@@ -792,14 +816,18 @@
           }
         }
 
-        var currentX = comp.width / 2 - totalLineWidth / 2;
+        var currentX = useRtl
+          ? comp.width / 2 + totalLineWidth / 2
+          : comp.width / 2 - totalLineWidth / 2;
         var currentY = startY + i * lineHeight;
 
         for (var j = 0; j < lineLayers.length; j++) {
           var layer = lineLayers[j];
           var rect = layer.sourceRectAtTime(layer.inPoint + 0.001, false);
 
-          var newX = currentX + rect.width / 2;
+          var newX = useRtl
+            ? currentX - rect.width / 2
+            : currentX + rect.width / 2;
           var positionProp = layer.property("Transform").property("Position");
 
           if (positionProp.dimensionsSeparated) {
@@ -813,7 +841,9 @@
           var layerTextProp = layer.property("Source Text");
           var layerTextDoc = layerTextProp.value;
           spaceWidth = layerTextDoc.fontSize / 2;
-          currentX += rect.width + spaceWidth;
+          currentX += useRtl
+            ? -(rect.width + spaceWidth)
+            : rect.width + spaceWidth;
         }
       }
     } catch (e) {
@@ -870,6 +900,8 @@
         alert("Invalid Max Words Per Line. Using default: " + maxWords);
       }
 
+      var useRtl = forceRtlCheckbox.value;
+
       var combinedTextContent = "";
       var currentLine = "";
       var currentLineWordCount = 0;
@@ -892,6 +924,9 @@
               currentLine.length + 1 + word.length > maxChars
             ) {
               // Line break condition met
+              if (useRtl) {
+                currentLine = currentLine.split(" ").reverse().join(" ");
+              }
               combinedTextContent += currentLine + "\r"; // Add current line to main text with a newline
               currentLine = word; // Start new line with current word
               currentLineWordCount = 1;
@@ -908,6 +943,9 @@
         }
       }
       if (currentLine !== "") {
+        if (useRtl) {
+          currentLine = currentLine.split(" ").reverse().join(" ");
+        }
         combinedTextContent += currentLine; // Add the last line
       }
 
@@ -1189,6 +1227,15 @@
     arrangeBtn.onClick = function () {
       arrangeWordsSideBySide();
     };
+
+    forceRtlCheckbox = combinePanel.add(
+      "checkbox",
+      undefined,
+      "Force RTL Layout"
+    );
+    forceRtlCheckbox.value = isRtlMode;
+    forceRtlCheckbox.helpTip =
+      "Forces Right-to-Left layout for 'Arrange' and 'Combine' functions. Automatically checked if an RTL language is detected during transcription.";
 
     win.layout.layout(true);
     win.layout.resize();

@@ -35,6 +35,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 * **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 * **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
 * **Text Layer Utilities:** Arrange individual word layers into centered paragraphs or combine them into a single, formatted text layer.
+* **Right-to-Left (RTL) Language Support:** Automatically detects RTL languages (like Arabic, Hebrew) and provides a manual override for correct layout when arranging or combining text.
 * **Automated Pre-comping:** Generated word layers are automatically grouped into a "Subtitles" pre-comp.
 * **Audio Rendering Utility:** Helper function to quickly render audio from your active AE composition.
 * **Pre-compiled API Option:** Includes a bundled `.exe` for the API server, eliminating the need for users to install Python and dependencies manually.
@@ -51,8 +52,8 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 4.  **Configure Styles:** Adjust font, size, and color settings in the panel.
 5.  **Transcribe:** Click "Select Audio File & Start Transcription".
     * The AE script sends the audio file to the local API.
-    * The API transcribes the audio using WhisperX, performs word-level alignment, and returns a JSON response with timed words.
-    * The AE script parses the JSON, creates a new text layer for each word in your active composition, applies the configured styles, and sets its in/out points.
+    * The API transcribes the audio using WhisperX, performs word-level alignment, and returns a JSON response with timed words and the detected language.
+    * The AE script parses the JSON, creates a new text layer for each word in your active composition, applies the configured styles, and sets its in/out points. It also automatically detects if the language is Right-to-Left (RTL) and enables the RTL layout mode.
     * Finally, all created text layers are pre-composed.
 6.  **Arrange/Combine (Optional):** Use the Text Layer Utilities to format the newly created word layers into paragraphs.
 
@@ -198,18 +199,19 @@ After generating word layers, you can use the utilities to format them into para
 * **Configuration:**
     * **Max Chars/Line:** The maximum number of characters allowed on a single line before forcing a line break.
     * **Max Words/Line:** The maximum number of words allowed on a single line.
+    * **Force RTL Layout:** A checkbox to manually enable Right-to-Left layout. This is automatically checked if an RTL language (e.g., Arabic, Hebrew) is detected during transcription, but can be toggled manually for any set of layers.
 
 * **Arrange Words Side-by-Side:**
     1.  In your composition (likely inside the "Subtitles" pre-comp), **select the word layers** you want to arrange.
     2.  Set your desired character and word limits in the panel.
     3.  Click "**Arrange Words Side-by-Side**".
-    4.  The script will reposition the selected layers to form a centered paragraph, breaking lines when either the character or word limit is reached. The animation and timing of each layer are preserved.
+    4.  The script will reposition the selected layers to form a centered paragraph, breaking lines when either the character or word limit is reached. The animation and timing of each layer are preserved. If RTL mode is active, words will be arranged from right to left.
 
 * **Combine Selected Text Layers:**
     1.  **Select the text layers** you want to merge.
     2.  Set your desired character and word limits.
     3.  Click "**Combine Selected Text Layers**".
-    4.  The script combines the text from all selected layers into the *first selected layer*. It applies line breaks based on your limits. All other selected layers are deleted. The timing of the first layer is preserved and extended to cover the duration of all original layers.
+    4.  The script combines the text from all selected layers into the *first selected layer*. It applies line breaks based on your limits. All other selected layers are deleted. The timing of the first layer is preserved and extended to cover the duration of all original layers. If RTL mode is active, the order of words on each line will be reversed to ensure correct display.
 
 ---
 
