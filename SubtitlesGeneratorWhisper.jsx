@@ -248,6 +248,20 @@ if (typeof JSON !== "object") {
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
+  // Name of the script shown in update messages
+  var SCRIPT_NAME = "AE Whisper X Local Transcriber";
+
+  // Helper to build the "new version available" message including the script name
+  function getNewVersionMessage(remoteVersion) {
+    return (
+      "A new version (" +
+      remoteVersion +
+      ") of " +
+      SCRIPT_NAME +
+      " is available.\n\n" +
+      "Please visit the GitHub repository to download the update."
+    );
+  }
   var TEMP_FOLDER_PATH;
 
   if (Folder.temp) {
@@ -1371,13 +1385,7 @@ if (typeof JSON !== "object") {
         if (match && match[1]) {
           var remoteVersion = match[1];
           if (remoteVersion !== SCRIPT_VERSION) {
-            alert(
-              "A new version of the script is available!\n\nYour Version: " +
-                SCRIPT_VERSION +
-                "\nLatest Version: " +
-                remoteVersion +
-                "\n\nPlease visit the GitHub repository to download the update."
-            );
+            alert(getNewVersionMessage(remoteVersion));
           }
         }
       }
