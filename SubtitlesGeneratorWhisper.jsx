@@ -734,7 +734,27 @@ if (typeof JSON !== "object") {
                 textDocument.fillColor = currentFillColor;
                 textDocument.justification =
                   ParagraphJustification.CENTER_JUSTIFY;
-                textDocument.fontCapsOption = FontCapsOption.FONT_NORMAL_CAPS;
+                // Set font caps option if available (AE CC 2018+), otherwise
+                // fall back to older allCaps/smallCaps properties for legacy AE.
+                try {
+                  if (
+                    typeof FontCapsOption !== "undefined" &&
+                    typeof textDocument.fontCapsOption !== "undefined"
+                  ) {
+                    textDocument.fontCapsOption =
+                      FontCapsOption.FONT_NORMAL_CAPS;
+                  } else {
+                    if (typeof textDocument.allCaps !== "undefined") {
+                      textDocument.allCaps = false;
+                    }
+                    if (typeof textDocument.smallCaps !== "undefined") {
+                      textDocument.smallCaps = false;
+                    }
+                  }
+                } catch (e_fontcaps) {
+                  // Older AE versions or unexpected runtime errors may
+                  // throw; silently ignore to keep the script robust.
+                }
                 if (currentStrokeWidth > 0) {
                   textDocument.applyStroke = true;
                   textDocument.strokeColor = currentStrokeColor;
