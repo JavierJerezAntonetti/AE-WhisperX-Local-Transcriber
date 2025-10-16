@@ -734,6 +734,12 @@ if (typeof JSON !== "object") {
                 textDocument.fillColor = currentFillColor;
                 textDocument.justification =
                   ParagraphJustification.CENTER_JUSTIFY;
+                // Ensure consistent character tracking (kerning) as requested
+                try {
+                  textDocument.tracking = -55;
+                } catch (e_tracking_set) {
+                  // Older AE versions may not support tracking; ignore silently
+                }
                 // Set font caps option if available (AE CC 2018+), otherwise
                 // fall back to older allCaps/smallCaps properties for legacy AE.
                 try {
