@@ -1170,7 +1170,9 @@ if (typeof JSON !== "object") {
       var firstLayer = textLayers[0];
       var textProp = firstLayer.property("Source Text");
       var textDoc = textProp.value;
-      var lineHeight = textDoc.fontSize * 1.2;
+      // Use a slightly tighter line height so multiple lines fit better
+      // Default was 1.2; reduce to 1.05 for more compact paragraphs
+      var lineHeight = textDoc.fontSize * 1.05;
 
       var startY = firstLayer.property("Transform").property("Position")
         .value[1];
@@ -1450,15 +1452,17 @@ if (typeof JSON !== "object") {
 
     win.orientation = "column";
     win.alignChildren = ["fill", "top"];
-    win.spacing = 10;
-    win.margins = 15;
+    // Reduced spacing/margins so the panel is more compact and fits better
+    win.spacing = 6;
+    win.margins = 8;
 
     // --- Preset Panel ---
     var presetPanel = win.add("panel", undefined, "Presets");
     presetPanel.orientation = "row";
     presetPanel.alignChildren = ["left", "center"];
-    presetPanel.spacing = 10;
-    presetPanel.margins = 10;
+    // Tighter preset panel spacing
+    presetPanel.spacing = 6;
+    presetPanel.margins = 6;
 
     presetDropdown = presetPanel.add("dropdownlist", undefined, []);
     presetDropdown.size = [180, 25];
@@ -1496,8 +1500,9 @@ if (typeof JSON !== "object") {
     var stylePanel = win.add("panel", undefined, "Text Styling Options");
     stylePanel.orientation = "column";
     stylePanel.alignChildren = "left";
-    stylePanel.spacing = 8;
-    stylePanel.margins = 10;
+    // Reduce vertical spacing inside styling options
+    stylePanel.spacing = 4;
+    stylePanel.margins = 6;
 
     // Search box for fonts (will filter the dropdown below)
     var fontSearchGroup = stylePanel.add("group");
@@ -1745,8 +1750,9 @@ if (typeof JSON !== "object") {
     var combinePanel = win.add("panel", undefined, "Text Layer Utilities");
     combinePanel.orientation = "column";
     combinePanel.alignChildren = "left";
-    combinePanel.spacing = 8;
-    combinePanel.margins = 10;
+    // Tighter utilities panel
+    combinePanel.spacing = 4;
+    combinePanel.margins = 6;
 
     combinePanel.add("statictext", undefined, "Combine Selected Text Layers:");
 
