@@ -244,7 +244,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "2.1"; // Current version of the script
+  var SCRIPT_VERSION = "2.3"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
@@ -1448,10 +1448,24 @@ if (typeof JSON !== "object") {
       return null;
     }
 
-    win.orientation = "column";
-    win.alignChildren = ["fill", "top"];
-    win.spacing = 10;
-    win.margins = 15;
+    win.orientation = "row";
+    win.alignChildren = ["fill", "fill"];
+    win.spacing = 0;
+    win.margins = 0;
+
+    // Create a main container group that will hold all the content
+    var mainContentGroup = win.add("group");
+    mainContentGroup.orientation = "column";
+    mainContentGroup.alignChildren = ["fill", "top"];
+    mainContentGroup.spacing = 10;
+    mainContentGroup.margins = 15;
+    mainContentGroup.alignment = ["fill", "fill"];
+
+    // Create scrollbar for the main content
+    var scrollbar = win.add("scrollbar", undefined, 0, 0, 100);
+    scrollbar.preferredSize = [15, -1];
+    scrollbar.alignment = ["right", "fill"];
+    scrollbar.stepdelta = 20;
 
     // --- Preset Panel ---
     var presetPanel = win.add("panel", undefined, "Presets");
