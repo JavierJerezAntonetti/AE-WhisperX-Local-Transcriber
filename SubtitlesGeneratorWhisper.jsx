@@ -296,6 +296,7 @@ if (typeof JSON !== "object") {
   var strokeWidthInput;
   var maxCharsInput, maxWordsInput;
   var forceRtlCheckbox;
+  var enableAnimationsCheckbox; // checkbox to enable/disable per-word pop-in animation
   var presetDropdown, savePresetBtn, deletePresetBtn; // Preset UI elements
 
   // --- Settings & Preset Configuration ---
@@ -781,20 +782,26 @@ if (typeof JSON !== "object") {
                 var scaleProp = textLayer
                   .property("Transform")
                   .property("Scale");
-                var keyTime1 = adjustedStartTime;
-                var keyTime2 = adjustedStartTime + 2 * frameDuration;
-                var keyTime3 = adjustedStartTime + 4 * frameDuration;
+                // Only add pop-in animation if user enabled it in the UI
+                if (
+                  enableAnimationsCheckbox &&
+                  enableAnimationsCheckbox.value
+                ) {
+                  var keyTime1 = adjustedStartTime;
+                  var keyTime2 = adjustedStartTime + 2 * frameDuration;
+                  var keyTime3 = adjustedStartTime + 4 * frameDuration;
 
-                scaleProp.setValueAtTime(keyTime1, [95, 95]);
-                if (keyTime2 < textLayer.outPoint) {
-                  scaleProp.setValueAtTime(keyTime2, [105, 105]);
-                  if (keyTime3 < textLayer.outPoint) {
-                    scaleProp.setValueAtTime(keyTime3, [100, 100]);
+                  scaleProp.setValueAtTime(keyTime1, [95, 95]);
+                  if (keyTime2 < textLayer.outPoint) {
+                    scaleProp.setValueAtTime(keyTime2, [105, 105]);
+                    if (keyTime3 < textLayer.outPoint) {
+                      scaleProp.setValueAtTime(keyTime3, [100, 100]);
+                    } else {
+                      scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
+                    }
                   } else {
                     scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
                   }
-                } else {
-                  scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
                 }
               }
               totalWordsCreated++;
@@ -1543,6 +1550,18 @@ if (typeof JSON !== "object") {
     );
     fontSizeInput.characters = 5;
 
+    // Checkbox to enable/disable per-word pop-in animations (disabled by default)
+    var animsGroup = stylePanel.add("group");
+    animsGroup.orientation = "row";
+    enableAnimationsCheckbox = animsGroup.add(
+      "checkbox",
+      undefined,
+      "Enable Text Animations (Pop-in)"
+    );
+    enableAnimationsCheckbox.helpTip =
+      "When checked, each word layer will receive a small pop-in scale animation. Disabled by default.";
+    enableAnimationsCheckbox.value = false;
+
     stylePanel.add(
       "statictext",
       undefined,
@@ -1753,6 +1772,16 @@ if (typeof JSON !== "object") {
       strokeBInput.text = settings.strokeColor
         ? settings.strokeColor[2]
         : DEFAULT_TEXT_STROKE_COLOR[2];
+      // Restore animation checkbox state if present in preset
+      if (typeof settings.enableAnimations !== "undefined") {
+        try {
+          if (enableAnimationsCheckbox) {
+            enableAnimationsCheckbox.value = !!settings.enableAnimations;
+          }
+        } catch (e_anim_restore) {
+          // Ignore any errors restoring the checkbox state
+        }
+      }
       maxCharsInput.text = settings.maxChars || DEFAULT_MAX_CHARS_PER_LINE;
       maxWordsInput.text = settings.maxWords || DEFAULT_MAX_WORDS_PER_LINE;
     };
@@ -1796,6 +1825,11 @@ if (typeof JSON !== "object") {
           ],
           maxChars: maxCharsInput.text,
           maxWords: maxWordsInput.text,
+          // Persist animation checkbox state
+          enableAnimations:
+            enableAnimationsCheckbox && enableAnimationsCheckbox.value
+              ? true
+              : false,
         };
         savePreset(presetName, settings);
         populatePresetDropdown();
