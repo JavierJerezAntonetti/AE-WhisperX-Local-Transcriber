@@ -1198,7 +1198,8 @@ if (typeof JSON !== "object") {
           if (j < lineLayers.length - 1) {
             var currentTextProp = currentLayer.property("Source Text");
             var currentTextDoc = currentTextProp.value;
-            spaceWidth = currentTextDoc.fontSize / 2;
+            // Reduce inter-word spacing to half of previous value (fontSize/4)
+            spaceWidth = currentTextDoc.fontSize / 4;
             totalLineWidth += spaceWidth;
           }
         }
@@ -1227,7 +1228,8 @@ if (typeof JSON !== "object") {
 
           var layerTextProp = layer.property("Source Text");
           var layerTextDoc = layerTextProp.value;
-          spaceWidth = layerTextDoc.fontSize / 2;
+          // Use reduced inter-word spacing (fontSize/4)
+          spaceWidth = layerTextDoc.fontSize / 4;
           currentX += useRtl
             ? -(rect.width + spaceWidth)
             : rect.width + spaceWidth;
