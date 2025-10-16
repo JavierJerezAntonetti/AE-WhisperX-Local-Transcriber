@@ -291,6 +291,8 @@ if (typeof JSON !== "object") {
   // --- UI Element Variables (will be defined in buildUI) ---
   var fontNameInput, fontSizeInput;
   var isFontDropdown = false; // Flag to check if font input is a dropdown
+  var fontSearchInput; // Search box for font dropdown
+  var availableFonts = []; // Cached list of available fonts for filtering
   var fillRInput, fillGInput, fillBInput;
   var strokeRInput, strokeGInput, strokeBInput;
   var strokeWidthInput;
@@ -1477,6 +1479,15 @@ if (typeof JSON !== "object") {
     stylePanel.spacing = 8;
     stylePanel.margins = 10;
 
+    // Search box for fonts (will filter the dropdown below)
+    var fontSearchGroup = stylePanel.add("group");
+    fontSearchGroup.orientation = "row";
+    fontSearchGroup.add("statictext", undefined, "Search Fonts:");
+    fontSearchInput = fontSearchGroup.add("edittext", undefined, "");
+    fontSearchInput.characters = 20;
+    fontSearchInput.helpTip =
+      "Type to filter the font dropdown by family/style or PostScript name.";
+
     var fontNameGroup = stylePanel.add("group");
     fontNameGroup.orientation = "row";
     fontNameGroup.add("statictext", undefined, "Font Name:");
@@ -1490,24 +1501,74 @@ if (typeof JSON !== "object") {
 
       try {
         var allFonts = app.fonts.allFonts;
-        var defaultFontFound = false;
+        var defaultFontPostScript = null;
+        availableFonts = [];
         for (var i = 0; i < allFonts.length; i++) {
           var familyGroup = allFonts[i];
           for (var j = 0; j < familyGroup.length; j++) {
             var font = familyGroup[j];
             if (font && font.postScriptName) {
               var displayName = font.familyName + " - " + font.styleName;
-              var item = fontNameInput.add("item", displayName);
-              item.properties = { postScriptName: font.postScriptName };
+              availableFonts.push({
+                postScriptName: font.postScriptName,
+                displayName: displayName,
+              });
               if (font.postScriptName === DEFAULT_TEXT_FONT_POSTSCRIPT_NAME) {
-                fontNameInput.selection = item;
-                defaultFontFound = true;
+                defaultFontPostScript = font.postScriptName;
               }
             }
           }
         }
-        if (!defaultFontFound && fontNameInput.items.length > 0) {
-          fontNameInput.selection = 0; // Select first font if default not found
+
+        // Populate the dropdown from the cached list (supports filtering)
+        var populateFontDropdown = function (query) {
+          query = (query || "").toString().toLowerCase();
+          fontNameInput.removeAll();
+          for (var k = 0; k < availableFonts.length; k++) {
+            var f = availableFonts[k];
+            if (
+              query === "" ||
+              f.displayName.toLowerCase().indexOf(query) !== -1 ||
+              f.postScriptName.toLowerCase().indexOf(query) !== -1
+            ) {
+              var it = fontNameInput.add("item", f.displayName);
+              it.properties = { postScriptName: f.postScriptName };
+            }
+          }
+          if (fontNameInput.items.length > 0) {
+            // Try to select the default font if visible, otherwise first
+            var foundSel = false;
+            if (defaultFontPostScript) {
+              for (var m = 0; m < fontNameInput.items.length; m++) {
+                if (
+                  fontNameInput.items[m].properties.postScriptName ===
+                  defaultFontPostScript
+                ) {
+                  fontNameInput.selection = m;
+                  foundSel = true;
+                  break;
+                }
+              }
+            }
+            if (!foundSel) fontNameInput.selection = 0;
+          }
+        };
+
+        // Initially populate with no filter
+        populateFontDropdown("");
+
+        // Wire search input to filter the dropdown live
+        if (fontSearchInput) {
+          fontSearchInput.onChanging = function () {
+            try {
+              populateFontDropdown(this.text || "");
+            } catch (e_pf) {}
+          };
+          fontSearchInput.onChange = function () {
+            try {
+              populateFontDropdown(this.text || "");
+            } catch (e_pf) {}
+          };
         }
       } catch (e) {
         // Fallback in case of error with font API
