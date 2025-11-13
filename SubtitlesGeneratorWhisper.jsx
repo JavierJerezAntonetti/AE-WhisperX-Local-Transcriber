@@ -244,7 +244,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "2.3"; // Current version of the script
+  var SCRIPT_VERSION = "3.0"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
@@ -300,6 +300,9 @@ if (typeof JSON !== "object") {
   var forceRtlCheckbox;
   var enableAnimationsCheckbox; // checkbox to enable/disable per-word pop-in animation
   var presetDropdown, savePresetBtn, deletePresetBtn; // Preset UI elements
+  var transcriptionLevelDropdown; // Dropdown for word-by-word or sentence level
+  var separateTextLayersCheckbox; // Checkbox for separate text layers mode
+  var geminiApiKeyInput; // Input field for Gemini API key
 
   // --- Settings & Preset Configuration ---
   var SETTINGS_SECTION = "WhisperTranscriberPanel";
@@ -376,6 +379,185 @@ if (typeof JSON !== "object") {
       presetList.splice(index, 1);
       savePresetList(presetList);
     }
+  };
+
+  // --- Helper Function to Combine Word Timings with Sentence Text ---
+  var combineSeparateTextLayers = function (wordData, sentenceData) {
+    // This function creates a hybrid structure:
+    // - Uses word-level timing from wordData
+    // - Uses sentence-level text from sentenceData
+    // - Creates segments where each word from sentences has its own timing
+
+    var combinedSegments = [];
+
+    if (
+      !sentenceData ||
+      !sentenceData.segments ||
+      !wordData ||
+      !wordData.segments
+    ) {
+      throw new Error("Invalid data for separate text layers mode");
+    }
+
+    // Build a flat list of all words from word-level data with their timings
+    var wordTimings = [];
+    for (var i = 0; i < wordData.segments.length; i++) {
+      var seg = wordData.segments[i];
+      if (seg.words && seg.words.length > 0) {
+        for (var j = 0; j < seg.words.length; j++) {
+          wordTimings.push({
+            word: seg.words[j].word,
+            start: seg.words[j].start,
+            end: seg.words[j].end,
+          });
+        }
+      }
+    }
+
+    // Now go through sentence-level data and match with word timings
+    var wordIndex = 0;
+    for (var i = 0; i < sentenceData.segments.length; i++) {
+      var sentenceSegment = sentenceData.segments[i];
+      var sentenceText = sentenceSegment.text || "";
+
+      // Split sentence into words (basic tokenization)
+      var sentenceWords = sentenceText.trim().split(/\s+/);
+
+      // Create a segment for this sentence with word-level data
+      var hybridSegment = {
+        start: sentenceSegment.start,
+        end: sentenceSegment.end,
+        text: sentenceText,
+        words: [],
+      };
+
+      // Match sentence words with word timings
+      for (
+        var j = 0;
+        j < sentenceWords.length && wordIndex < wordTimings.length;
+        j++
+      ) {
+        var sentenceWord = sentenceWords[j];
+        var timing = wordTimings[wordIndex];
+
+        // Create word object using sentence text but word timing
+        hybridSegment.words.push({
+          word: sentenceWord,
+          start: timing.start,
+          end: timing.end,
+        });
+
+        wordIndex++;
+      }
+
+      if (hybridSegment.words.length > 0) {
+        combinedSegments.push(hybridSegment);
+      }
+    }
+
+    return combinedSegments;
+  };
+
+  // --- Helper Function to Make API Call ---
+  var makeApiCall = function (
+    audioFile,
+    transcriptionLevel,
+    scriptTempFolder,
+    geminiApiKey
+  ) {
+    var responseFilePath =
+      scriptTempFolder.fsName +
+      "/" +
+      transcriptionLevel +
+      "_" +
+      TEMP_RESPONSE_FILENAME;
+    var responseFile = new File(responseFilePath);
+    if (responseFile.exists) responseFile.remove();
+
+    var audioPathForCurl = audioFile.fsName.replace(/\\/g, "/");
+    var responsePathForCurl = responseFile.fsName.replace(/\\/g, "/");
+    var curlCommand =
+      'curl -s -S -X POST -F "audio=@\\"' +
+      audioPathForCurl +
+      '\\"" -F "transcription_level=' +
+      transcriptionLevel +
+      '"';
+
+    // Add Gemini API key if provided (for sentence-level splitting)
+    if (
+      geminiApiKey &&
+      geminiApiKey.trim() !== "" &&
+      transcriptionLevel === "sentence"
+    ) {
+      // Escape the API key for curl (handle special characters)
+      var escapedApiKey = geminiApiKey.replace(/"/g, '\\"');
+      curlCommand += ' -F "gemini_api_key=' + escapedApiKey + '"';
+    }
+
+    curlCommand +=
+      ' "' + WHISPER_API_URL + '" -o "' + responsePathForCurl + '"';
+
+    var systemCallResult = "";
+    try {
+      if ($.os.indexOf("Windows") > -1) {
+        systemCallResult = system.callSystem(
+          'cmd.exe /c "' + curlCommand + '"'
+        );
+      } else {
+        systemCallResult = system.callSystem(curlCommand);
+      }
+    } catch (e_curl_exec) {
+      throw new Error(
+        "Error calling system command (curl): " +
+          e_curl_exec.toString() +
+          "\nEnsure curl is installed and in your system PATH.\nCommand: " +
+          curlCommand
+      );
+    }
+
+    if (!responseFile.exists || responseFile.length === 0) {
+      throw new Error(
+        "API call failed or produced no response file (or empty file). \n" +
+          "Curl command was: " +
+          curlCommand +
+          "\n" +
+          "System call result string (if any): '" +
+          systemCallResult +
+          "'\n" +
+          "Check if your Python Whisper API server is running at " +
+          WHISPER_API_URL +
+          ".\n" +
+          "Expected response file at: " +
+          responseFilePath
+      );
+    }
+
+    // Parse JSON response
+    var transcriptionData;
+    var responseContent = "";
+    try {
+      responseFile.open("r");
+      responseContent = responseFile.read();
+      responseFile.close();
+
+      if (responseContent.length > 0 && responseContent.charAt(0) === "<") {
+        throw new Error(
+          "Received HTML instead of JSON. API server might have an error. Check server logs. Response starts with: " +
+            responseContent.substring(0, 200)
+        );
+      }
+      transcriptionData = JSON.parse(responseContent);
+    } catch (e_json) {
+      throw new Error(
+        "Error parsing API response: " +
+          e_json.toString() +
+          "\nResponse content was:\n" +
+          (responseContent.substring(0, 500) || "empty") +
+          (responseContent.length > 500 ? "..." : "")
+      );
+    }
+
+    return transcriptionData;
   };
 
   // --- Main Transcription Function ---
@@ -499,86 +681,59 @@ if (typeof JSON !== "object") {
         );
       }
 
-      // --- Curl Call Section ---
-      var responseFilePath =
-        scriptTempFolder.fsName + "/" + TEMP_RESPONSE_FILENAME;
-      var responseFile = new File(responseFilePath);
-      if (responseFile.exists) responseFile.remove();
+      // --- Get Transcription Level ---
+      var selectedTranscriptionLevel = "word"; // default
+      if (transcriptionLevelDropdown && transcriptionLevelDropdown.selection) {
+        if (transcriptionLevelDropdown.selection.index === 0) {
+          selectedTranscriptionLevel = "word";
+        } else {
+          selectedTranscriptionLevel = "sentence";
+        }
+      }
 
-      var curlCommand;
-      var audioPathForCurl = audioFile.fsName.replace(/\\/g, "/");
-      var responsePathForCurl = responseFile.fsName.replace(/\\/g, "/");
-      curlCommand =
-        'curl -s -S -X POST -F "audio=@\\"' +
-        audioPathForCurl +
-        '\\"" "' +
-        WHISPER_API_URL +
-        '" -o "' +
-        responsePathForCurl +
-        '"';
+      var useSeparateTextLayers = separateTextLayersCheckbox
+        ? separateTextLayersCheckbox.value
+        : false;
 
-      var systemCallResult = "";
+      // --- Get Gemini API Key ---
+      var geminiApiKey = geminiApiKeyInput ? geminiApiKeyInput.text : "";
+
+      // --- API Call(s) ---
+      var transcriptionData;
+      var sentenceData;
+      var processWarnings = []; // Track warnings/fallbacks for end summary
+
       try {
-        if ($.os.indexOf("Windows") > -1) {
-          systemCallResult = system.callSystem(
-            'cmd.exe /c "' + curlCommand + '"'
+        if (
+          useSeparateTextLayers &&
+          selectedTranscriptionLevel === "sentence"
+        ) {
+          // Make TWO API calls: one for word-level timing, one for sentence-level text
+          transcriptionData = makeApiCall(
+            audioFile,
+            "word",
+            scriptTempFolder,
+            ""
+          );
+          sentenceData = makeApiCall(
+            audioFile,
+            "sentence",
+            scriptTempFolder,
+            geminiApiKey
           );
         } else {
-          systemCallResult = system.callSystem(curlCommand);
-        }
-      } catch (e_curl_exec) {
-        alert(
-          "Error calling system command (curl): " +
-            e_curl_exec.toString() +
-            "\nEnsure curl is installed and in your system PATH.\nCommand: " +
-            curlCommand
-        );
-        app.endUndoGroup();
-        return;
-      }
-
-      if (!responseFile.exists || responseFile.length === 0) {
-        var errorMsg =
-          "API call failed or produced no response file (or empty file). \n";
-        errorMsg += "Curl command was: " + curlCommand + "\n";
-        errorMsg +=
-          "System call result string (if any): '" + systemCallResult + "'\n";
-        errorMsg +=
-          "Check if your Python Whisper API server is running at " +
-          WHISPER_API_URL +
-          ".\n";
-        errorMsg +=
-          "Also, check the Python server console for errors regarding this request.\n";
-        errorMsg += "Expected response file at: " + responseFilePath;
-        alert(errorMsg);
-        app.endUndoGroup();
-        return;
-      }
-
-      // --- JSON Parsing and Layer Creation ---
-      var transcriptionData;
-      var responseContent = "";
-      try {
-        responseFile.open("r");
-        responseContent = responseFile.read();
-        responseFile.close();
-
-        if (responseContent.length > 0 && responseContent.charAt(0) === "<") {
-          throw new Error(
-            "Received HTML instead of JSON. API server might have an error. Check server logs. Response starts with: " +
-              responseContent.substring(0, 200)
+          // Normal mode: single API call
+          var apiKeyToUse =
+            selectedTranscriptionLevel === "sentence" ? geminiApiKey : "";
+          transcriptionData = makeApiCall(
+            audioFile,
+            selectedTranscriptionLevel,
+            scriptTempFolder,
+            apiKeyToUse
           );
         }
-        transcriptionData = JSON.parse(responseContent);
-      } catch (e_json) {
-        alert(
-          "Error parsing API response: " +
-            e_json.toString() +
-            "\nResponse content was:\n" +
-            (responseContent.substring(0, 500) || "empty") +
-            (responseContent.length > 500 ? "..." : "")
-        );
-        if (responseFile.exists) responseFile.remove();
+      } catch (e_api) {
+        alert(e_api.toString());
         app.endUndoGroup();
         return;
       }
@@ -593,19 +748,34 @@ if (typeof JSON !== "object") {
       ) {
         isRtlMode = true;
         forceRtlCheckbox.value = true; // Update the UI checkbox state
-        alert(
-          "RTL language '" +
-            transcriptionData.language +
-            "' detected. RTL layout will be used for arrangement/combination functions. You can override this with the 'Force RTL' checkbox."
-        );
+        // RTL detected and enabled automatically - no alert needed
+      }
+
+      // --- Process Separate Text Layers Mode ---
+      var processedSegments;
+      var isSeparateMode = false;
+
+      if (useSeparateTextLayers && sentenceData) {
+        try {
+          processedSegments = combineSeparateTextLayers(
+            transcriptionData,
+            sentenceData
+          );
+          isSeparateMode = true;
+        } catch (e_combine) {
+          processWarnings.push(
+            "Error combining word and sentence data: " +
+              e_combine.toString() +
+              ". Falling back to normal mode."
+          );
+          processedSegments = transcriptionData.segments;
+        }
+      } else {
+        processedSegments = transcriptionData.segments;
       }
 
       var createdTextLayers = [];
-      if (
-        transcriptionData &&
-        transcriptionData.segments &&
-        transcriptionData.segments.length > 0
-      ) {
+      if (processedSegments && processedSegments.length > 0) {
         var totalWordsCreated = 0;
         var segmentsWithIssues = 0;
         var frameDuration = comp.frameDuration;
@@ -619,8 +789,120 @@ if (typeof JSON !== "object") {
           timeOffset = 3 * frameDuration;
         }
 
-        for (var i = 0; i < transcriptionData.segments.length; i++) {
-          var segment = transcriptionData.segments[i];
+        // Determine if we should process word-by-word or sentence-by-sentence
+        var shouldProcessWords =
+          selectedTranscriptionLevel === "word" || isSeparateMode;
+
+        for (var i = 0; i < processedSegments.length; i++) {
+          var segment = processedSegments[i];
+
+          // For sentence-level (non-separate mode), create one layer per sentence
+          if (!shouldProcessWords) {
+            var sentenceText = segment.text || "";
+            var sentenceStart = parseFloat(segment.start);
+            var sentenceEnd = parseFloat(segment.end);
+
+            if (
+              sentenceText &&
+              !isNaN(sentenceStart) &&
+              !isNaN(sentenceEnd) &&
+              sentenceEnd > sentenceStart
+            ) {
+              var adjustedStartTime = sentenceStart - timeOffset;
+              if (adjustedStartTime < 0) adjustedStartTime = 0;
+              var adjustedEndTime = sentenceEnd - timeOffset;
+
+              var textLayer = comp.layers.addText(sentenceText);
+              textLayer.name =
+                "S_" +
+                i +
+                "_" +
+                sentenceText
+                  .replace(/[^a-zA-Z0-9_]/g, "")
+                  .substring(0, MAX_LAYER_NAME_WORD_LENGTH);
+              textLayer.inPoint = adjustedStartTime;
+              textLayer.outPoint = adjustedEndTime;
+
+              if (textLayer.outPoint <= textLayer.inPoint) {
+                if (frameDuration > 0) {
+                  textLayer.outPoint = textLayer.inPoint + frameDuration;
+                } else {
+                  textLayer.outPoint = textLayer.inPoint + 0.04;
+                }
+              }
+
+              var textProp = textLayer.property("Source Text");
+              if (textProp && textProp.numKeys === 0) {
+                var textDocument = textProp.value;
+                textDocument.font = currentFontName;
+                textDocument.fontSize = currentFontSize;
+                textDocument.fillColor = currentFillColor;
+                textDocument.justification =
+                  ParagraphJustification.CENTER_JUSTIFY;
+                try {
+                  textDocument.tracking = -55;
+                } catch (e_tracking_set) {}
+                try {
+                  if (
+                    typeof FontCapsOption !== "undefined" &&
+                    typeof textDocument.fontCapsOption !== "undefined"
+                  ) {
+                    textDocument.fontCapsOption =
+                      FontCapsOption.FONT_NORMAL_CAPS;
+                  } else {
+                    if (typeof textDocument.allCaps !== "undefined") {
+                      textDocument.allCaps = false;
+                    }
+                    if (typeof textDocument.smallCaps !== "undefined") {
+                      textDocument.smallCaps = false;
+                    }
+                  }
+                } catch (e_fontcaps) {}
+                if (currentStrokeWidth > 0) {
+                  textDocument.applyStroke = true;
+                  textDocument.strokeColor = currentStrokeColor;
+                  textDocument.strokeWidth = currentStrokeWidth;
+                  textDocument.strokeOverFill = false;
+                  textDocument.lineJoinType = LineJoinType.LINE_JOIN_ROUND;
+                } else {
+                  textDocument.applyStroke = false;
+                }
+                textProp.setValue(textDocument);
+              }
+
+              try {
+                var textLayerMoreOptions = textLayer
+                  .property("Text")
+                  .property("More Options");
+                if (textLayerMoreOptions) {
+                  textLayerMoreOptions.property("Fill & Stroke").setValue(2);
+                }
+              } catch (e_render_order) {}
+
+              try {
+                var rect = textLayer.sourceRectAtTime(adjustedStartTime, false);
+                if (rect && rect.width > 0 && rect.height > 0) {
+                  var newAnchorX = rect.left + rect.width / 2;
+                  var newAnchorY = rect.top + rect.height / 2;
+                  textLayer
+                    .property("Transform")
+                    .property("Anchor Point")
+                    .setValue([newAnchorX, newAnchorY]);
+                }
+              } catch (e_anchor) {}
+
+              var positionProp = textLayer
+                .property("Transform")
+                .property("Position");
+              positionProp.setValue([comp.width / 2, comp.height / 2]);
+
+              totalWordsCreated++;
+              createdTextLayers.push(textLayer);
+            }
+            continue;
+          }
+
+          // For word-by-word processing
           if (
             segment.words_error ||
             !segment.words ||
@@ -687,8 +969,8 @@ if (typeof JSON !== "object") {
                     }
                   }
                 }
-              } else if (i < transcriptionData.segments.length - 1) {
-                var nextSegmentData = transcriptionData.segments[i + 1];
+              } else if (i < processedSegments.length - 1) {
+                var nextSegmentData = processedSegments[i + 1];
                 if (
                   nextSegmentData &&
                   nextSegmentData.words &&
@@ -838,10 +1120,168 @@ if (typeof JSON !== "object") {
           }
         }
 
+        // Auto-arrange words side-by-side if in separate text layers mode
+        if (isSeparateMode && createdTextLayers.length > 0) {
+          try {
+            // Group layers by segments for proper arrangement
+            var currentSegmentIndex = 0;
+            var segmentStartIndex = 0;
+
+            for (var segIdx = 0; segIdx < processedSegments.length; segIdx++) {
+              var seg = processedSegments[segIdx];
+              if (!seg.words || seg.words.length === 0) continue;
+
+              var segmentLayers = [];
+              for (
+                var wIdx = 0;
+                wIdx < seg.words.length &&
+                segmentStartIndex + wIdx < createdTextLayers.length;
+                wIdx++
+              ) {
+                segmentLayers.push(createdTextLayers[segmentStartIndex + wIdx]);
+              }
+
+              if (segmentLayers.length > 0) {
+                // Arrange this segment's words side by side
+                var maxChars = parseInt(maxCharsInput.text, 10);
+                if (isNaN(maxChars) || maxChars <= 0)
+                  maxChars = DEFAULT_MAX_CHARS_PER_LINE;
+
+                var maxWords = parseInt(maxWordsInput.text, 10);
+                if (isNaN(maxWords) || maxWords <= 0)
+                  maxWords = DEFAULT_MAX_WORDS_PER_LINE;
+
+                var useRtl = forceRtlCheckbox.value;
+
+                // Sort layers by inPoint
+                segmentLayers.sort(function (a, b) {
+                  return a.inPoint - b.inPoint;
+                });
+
+                var latestOutPoint = 0;
+                for (var i = 0; i < segmentLayers.length; i++) {
+                  if (segmentLayers[i].outPoint > latestOutPoint) {
+                    latestOutPoint = segmentLayers[i].outPoint;
+                  }
+                }
+
+                var lines = [];
+                var currentLine = [];
+                var currentLineWordCount = 0;
+                var currentLineCharCount = 0;
+
+                for (var i = 0; i < segmentLayers.length; i++) {
+                  var layer = segmentLayers[i];
+                  var word = layer.property("Source Text").value.text;
+                  if (word === "") continue;
+
+                  var wouldExceedLimits =
+                    currentLineWordCount > 0 &&
+                    (currentLineWordCount + 1 > maxWords ||
+                      currentLineCharCount + 1 + word.length > maxChars);
+
+                  if (wouldExceedLimits) {
+                    lines.push(currentLine);
+                    currentLine = [layer];
+                    currentLineWordCount = 1;
+                    currentLineCharCount = word.length;
+                  } else {
+                    currentLine.push(layer);
+                    currentLineWordCount++;
+                    currentLineCharCount +=
+                      (currentLineCharCount > 0 ? 1 : 0) + word.length;
+                  }
+                }
+                if (currentLine.length > 0) {
+                  lines.push(currentLine);
+                }
+
+                var firstLayer = segmentLayers[0];
+                var textProp = firstLayer.property("Source Text");
+                var textDoc = textProp.value;
+                var lineHeight = textDoc.fontSize * 1.05;
+
+                var startY = firstLayer
+                  .property("Transform")
+                  .property("Position").value[1];
+
+                for (var i = 0; i < lines.length; i++) {
+                  var lineLayers = lines[i];
+                  var totalLineWidth = 0;
+                  var spaceWidth = 0;
+
+                  for (var j = 0; j < lineLayers.length; j++) {
+                    var currentLayer = lineLayers[j];
+                    var rect = currentLayer.sourceRectAtTime(
+                      currentLayer.inPoint + 0.001,
+                      false
+                    );
+                    totalLineWidth += rect.width;
+                    if (j < lineLayers.length - 1) {
+                      var currentTextProp =
+                        currentLayer.property("Source Text");
+                      var currentTextDoc = currentTextProp.value;
+                      spaceWidth = currentTextDoc.fontSize / 4;
+                      totalLineWidth += spaceWidth;
+                    }
+                  }
+
+                  var currentX = useRtl
+                    ? comp.width / 2 + totalLineWidth / 2
+                    : comp.width / 2 - totalLineWidth / 2;
+                  var currentY = startY + i * lineHeight;
+
+                  for (var j = 0; j < lineLayers.length; j++) {
+                    var layer = lineLayers[j];
+                    var rect = layer.sourceRectAtTime(
+                      layer.inPoint + 0.001,
+                      false
+                    );
+
+                    var newX = useRtl
+                      ? currentX - rect.width / 2
+                      : currentX + rect.width / 2;
+                    var positionProp = layer
+                      .property("Transform")
+                      .property("Position");
+
+                    if (positionProp.dimensionsSeparated) {
+                      positionProp.setValue([
+                        newX,
+                        currentY,
+                        positionProp.value[2] || 0,
+                      ]);
+                    } else {
+                      positionProp.setValue([newX, currentY]);
+                    }
+
+                    layer.outPoint = latestOutPoint;
+
+                    var layerTextProp = layer.property("Source Text");
+                    var layerTextDoc = layerTextProp.value;
+                    spaceWidth = layerTextDoc.fontSize / 4;
+                    currentX += useRtl
+                      ? -(rect.width + spaceWidth)
+                      : rect.width + spaceWidth;
+                  }
+                }
+              }
+
+              segmentStartIndex += seg.words.length;
+            }
+          } catch (e_arrange) {
+            processWarnings.push(
+              "Error auto-arranging words: " + e_arrange.toString()
+            );
+          }
+        }
+
         var finalMessage =
           "Transcription complete! " +
           totalWordsCreated +
-          " styled word layers created.";
+          " styled " +
+          (shouldProcessWords ? "word" : "sentence") +
+          " layers created.";
         if (segmentsWithIssues > 0) {
           finalMessage +=
             "\n(" +
@@ -850,15 +1290,14 @@ if (typeof JSON !== "object") {
         }
         if (
           totalWordsCreated === 0 &&
-          transcriptionData.segments.length > 0 &&
-          segmentsWithIssues === transcriptionData.segments.length
+          processedSegments.length > 0 &&
+          segmentsWithIssues === processedSegments.length
         ) {
           finalMessage =
             "Transcription processed, but no word-level data could be used. Check API alignment models.";
         } else if (
           totalWordsCreated === 0 &&
-          (!transcriptionData.segments ||
-            transcriptionData.segments.length === 0)
+          (!processedSegments || processedSegments.length === 0)
         ) {
           finalMessage = "API returned no segments or words.";
         }
@@ -876,17 +1315,15 @@ if (typeof JSON !== "object") {
                 PRECOMP_NAME,
                 true
               );
-              if (subtitlePrecompLayer) {
-                // alert(
-                //  "Created word layers have been pre-composed into '" +
-                //    PRECOMP_NAME +
-                //    "'."
-                // ); // Removed success alert
-              } else {
-                alert("Failed to pre-compose the subtitle layers.");
+              if (!subtitlePrecompLayer) {
+                processWarnings.push(
+                  "Failed to pre-compose the subtitle layers."
+                );
               }
             } catch (e_precomp) {
-              alert("Error during pre-composition: " + e_precomp.toString());
+              processWarnings.push(
+                "Error during pre-composition: " + e_precomp.toString()
+              );
             }
           }
         }
@@ -918,11 +1355,30 @@ if (typeof JSON !== "object") {
         alert(noDataMsg);
       }
 
+      // Cleanup temporary response files
       try {
-        if (responseFile.exists) responseFile.remove();
+        var wordResponseFile = new File(
+          scriptTempFolder.fsName + "/word_" + TEMP_RESPONSE_FILENAME
+        );
+        if (wordResponseFile.exists) wordResponseFile.remove();
+
+        var sentenceResponseFile = new File(
+          scriptTempFolder.fsName + "/sentence_" + TEMP_RESPONSE_FILENAME
+        );
+        if (sentenceResponseFile.exists) sentenceResponseFile.remove();
       } catch (e_cleanup) {
         // Error during cleanup
       }
+
+      // Show summary only if there were warnings/fallbacks
+      if (processWarnings.length > 0) {
+        var summaryMsg = "Transcription completed with warnings:\n\n";
+        for (var w = 0; w < processWarnings.length; w++) {
+          summaryMsg += "• " + processWarnings[w] + "\n";
+        }
+        alert(summaryMsg);
+      }
+
       app.endUndoGroup();
     } catch (e_main) {
       alert(
@@ -1502,8 +1958,57 @@ if (typeof JSON !== "object") {
     win.add(
       "statictext",
       undefined,
-      "2. Transcribe Audio to Word Layers:"
+      "2. Transcribe Audio to Text Layers:"
     ).alignment = "left";
+
+    // --- Transcription Level Dropdown ---
+    var transcriptionLevelGroup = win.add("group");
+    transcriptionLevelGroup.orientation = "row";
+    transcriptionLevelGroup.add(
+      "statictext",
+      undefined,
+      "Transcription Level:"
+    );
+    transcriptionLevelDropdown = transcriptionLevelGroup.add(
+      "dropdownlist",
+      undefined,
+      ["Word-by-Word", "Sentence Level"]
+    );
+    transcriptionLevelDropdown.selection = 0; // Default to Word-by-Word
+    transcriptionLevelDropdown.helpTip =
+      "Choose between word-by-word or sentence level transcription.";
+
+    // --- Separate Text Layers Checkbox ---
+    var separateLayersGroup = win.add("group");
+    separateLayersGroup.orientation = "row";
+    separateTextLayersCheckbox = separateLayersGroup.add(
+      "checkbox",
+      undefined,
+      "Separate Text Layers (Sentence + Word Timing)"
+    );
+    separateTextLayersCheckbox.value = false;
+    separateTextLayersCheckbox.helpTip =
+      "When checked with Sentence Level selected, creates individual word layers with word timings but uses sentence-level text. Automatically arranges words side-by-side.";
+
+    // --- Gemini API Key Input (for sentence splitting) ---
+    var geminiApiKeyGroup = win.add("group");
+    geminiApiKeyGroup.orientation = "row";
+    geminiApiKeyGroup.add("statictext", undefined, "Gemini API Key:");
+    geminiApiKeyInput = geminiApiKeyGroup.add("edittext", undefined, "");
+    geminiApiKeyInput.characters = 60;
+    geminiApiKeyInput.helpTip =
+      "Optional: Enter your Gemini API key to use Gemini 2.0 Flash for intelligent sentence splitting (max 9 words per sentence). Only used when Transcription Level is set to 'Sentence Level'. Leave empty to use original segments.";
+
+    // Try to load saved API key
+    var savedApiKey = getSetting("Gemini_API_Key");
+    if (savedApiKey) {
+      geminiApiKeyInput.text = savedApiKey;
+    }
+
+    // Save API key when changed
+    geminiApiKeyInput.onChange = function () {
+      saveSetting("Gemini_API_Key", this.text);
+    };
 
     var stylePanel = win.add("panel", undefined, "Text Styling Options");
     stylePanel.orientation = "column";

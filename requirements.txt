@@ -14,3 +14,6 @@ speechbrain
 lightning_fabric
 asteroid-filterbanks
 scikit-learn
+
+# Optional: Google Generative AI for intelligent sentence splitting
+google-generativeai

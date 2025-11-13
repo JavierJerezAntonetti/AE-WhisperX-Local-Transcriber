@@ -31,7 +31,11 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 
 - **Local Transcription:** Keep your audio data private. No cloud uploads required after initial model download.
 - **WhisperX Powered:** Leverages the speed and accuracy of WhisperX for transcription and word-level timestamps.
-- **Word-Level Accuracy:** Creates individual text layers for each word, perfectly timed.
+- **Flexible Transcription Modes:**
+  - **Word-by-Word Mode:** Creates individual text layers for each word with precise timing (default).
+  - **Sentence Level Mode:** Creates one text layer per sentence for faster processing.
+  - **Separate Text Layers Mode:** Combines the best of both - uses word-level timing with sentence-corrected text, automatically arranged side-by-side.
+- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 2.0 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per sentence).
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
 - **Dynamic Font Selector:** Automatically populates a dropdown with all system fonts on After Effects 24.0+, with a fallback to manual input for older versions.
@@ -40,6 +44,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 - **Right-to-Left (RTL) Language Support:** Automatically detects RTL languages (like Arabic, Hebrew) and provides a manual override for correct layout when arranging or combining text.
 - **Automated Pre-comping:** Generated word layers are automatically grouped into a "Subtitles" pre-comp.
 - **Audio Rendering Utility:** Helper function to quickly render audio from your active AE composition.
+- **Silent Processing:** Runs without interrupting alerts - only shows warnings if something goes wrong.
 - **Pre-compiled API Option:** Includes a bundled `.exe` for the API server, eliminating the need for users to install Python and dependencies manually.
 
 ---
@@ -52,12 +57,23 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
     - Optionally, use the panel to render audio from your active composition.
     - Select an existing audio file (`.wav`, `.mp3`, etc.).
 4.  **Configure Styles & Presets:** Adjust font, size, and color settings in the panel. You can save these settings as a preset for quick recall later.
-5.  **Transcribe:** Click "Select Audio File & Start Transcription".
-    - The AE script sends the audio file to the local API.
-    - The API transcribes the audio using WhisperX, performs word-level alignment, and returns a JSON response with timed words and the detected language.
-    - The AE script parses the JSON, creates a new text layer for each word in your active composition, applies the configured styles, and sets its in/out points. It also automatically detects if the language is Right-to-Left (RTL) and enables the RTL layout mode.
-    - Finally, all created text layers are pre-composed.
-6.  **Arrange/Combine (Optional):** Use the Text Layer Utilities to format the newly created word layers into paragraphs.
+5.  **Choose Transcription Mode:**
+    - **Word-by-Word (Default):** Creates individual text layers for each word with precise timing.
+    - **Sentence Level:** Creates one text layer per sentence. Optionally use Gemini API key for intelligent sentence splitting into captionable chunks (max 9 words).
+    - **Separate Text Layers:** When Sentence Level is selected, this mode makes two API calls - one for word timing and one for sentence text - then combines them to create word layers with sentence-corrected text, automatically arranged side-by-side.
+6.  **Transcribe:** Click "Select Audio File & Start Transcription".
+    - The AE script sends the audio file to the local API with your selected transcription mode.
+    - The API transcribes the audio using WhisperX:
+      - **Word-by-Word:** Performs word-level alignment and returns timed words.
+      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 2.0 Flash to split long sentences into shorter, captionable chunks (max 9 words each).
+    - The AE script parses the JSON response:
+      - Creates text layers (word-by-word or sentence-by-sentence based on mode).
+      - Applies the configured styles and sets in/out points.
+      - Automatically detects RTL languages and enables RTL layout mode.
+      - In Separate Text Layers mode, automatically arranges words side-by-side.
+    - All created text layers are pre-composed into a "Subtitles" comp.
+    - The process runs silently - you'll only see alerts if there were warnings or fallbacks.
+7.  **Arrange/Combine (Optional):** Use the Text Layer Utilities to further format the newly created text layers into paragraphs (if not already arranged in Separate Text Layers mode).
 
 ---
 
@@ -77,6 +93,10 @@ Before you begin, ensure you have the following installed:
     - If you choose _not_ to use the pre-compiled `WhisperX API.exe`, you'll need Python.
     - **Crucially, Python version must be LESS THAN 3.13** (e.g., 3.10, 3.11, 3.12) due to Whisper/WhisperX compatibility. You can download older Python versions from [python.org](https://www.python.org/downloads/).
     - `pip` (Python package installer) is also required.
+5.  **(Optional) Google Gemini API Key:**
+    - Required only if you want to use intelligent sentence splitting for Sentence Level transcription.
+    - Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+    - The API key is saved in After Effects settings, so you only need to enter it once.
 
 ---
 
@@ -120,6 +140,7 @@ This method gives you more control and is necessary if you want to modify the AP
       ```bash
       pip install -r requirements.txt
       ```
+    - **Note:** The `google-generativeai` package is included for optional Gemini sentence splitting. If you don't plan to use this feature, you can skip installing it, but the API will gracefully handle its absence.
     - **Note on PyTorch:** If you have a compatible NVIDIA GPU and want to use CUDA for faster processing, you might need a specific PyTorch version. The `requirements.txt` installs the standard CPU version. Visit [PyTorch.org](https://pytorch.org/get-started/locally/) for instructions on installing with CUDA support. If you do, remember to change the `DEVICE` setting in `whisperAPI.py` to `"cuda"`.
 4.  **Run the API:**
     ```bash
@@ -194,18 +215,66 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
 ### 3. Transcribe Audio
 
 1.  Ensure your chosen composition is active (this is where the text layers will be created).
-2.  Click the "**Select Audio File & Start Transcription**" button.
-3.  Select the audio file you want to transcribe (e.g., `.wav`, `.mp3`, `.m4a`).
-4.  The script sends the audio to the local WhisperX API.
-5.  Once complete:
-    - Individual, styled, and timed text layers for each word will be created.
-    - A pop-up will confirm the number of layers created.
+
+2.  **Choose Your Transcription Mode:**
+
+    - **Transcription Level Dropdown:**
+
+      - **Word-by-Word (Default):** Creates individual text layers for each word with precise timing. Best for kinetic typography and word-by-word animations.
+      - **Sentence Level:** Creates one text layer per sentence. Faster processing, ideal for subtitle workflows. Optionally use Gemini for intelligent sentence splitting.
+
+    - **Separate Text Layers Checkbox:**
+
+      - Only available when "Sentence Level" is selected.
+      - When checked, makes two API calls (word + sentence) and combines them:
+        - Uses word-level timing for precise appearance of each word.
+        - Uses sentence-level corrected text for better accuracy.
+        - Automatically arranges words side-by-side in proper sentence formation.
+        - Perfect for creating word-by-word animations with correct sentence structure.
+
+    - **Gemini API Key (Optional):**
+      - Enter your Google Gemini API key to enable intelligent sentence splitting.
+      - Only used when "Sentence Level" is selected.
+      - Splits long sentences into short, captionable chunks (max 9 words per sentence).
+      - The API key is automatically saved in After Effects settings.
+      - Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+
+3.  Click the "**Select Audio File & Start Transcription**" button.
+
+4.  Select the audio file you want to transcribe (e.g., `.wav`, `.mp3`, `.m4a`).
+
+5.  The script sends the audio to the local WhisperX API with your selected mode.
+
+6.  **Processing:**
+
+    - The process runs silently without interrupting alerts.
+    - For "Separate Text Layers" mode, two API calls are made automatically.
+    - If a Gemini API key is provided with Sentence Level, sentences are intelligently split.
+    - RTL languages are automatically detected and handled.
+
+7.  **Once complete:**
+    - Text layers are created based on your selected mode:
+      - **Word-by-Word:** One layer per word with precise timing.
+      - **Sentence Level:** One layer per sentence (or split sentence if Gemini is used).
+      - **Separate Text Layers:** One layer per word with sentence text, automatically arranged side-by-side.
+    - All layers are styled according to your preset/settings.
     - All new text layers are automatically pre-composed into a comp named "**Subtitles**".
-    - **Note:** The text layers are created with a small pop-in scale animation.
+    - If any warnings or fallbacks occurred, you'll see a summary at the end. Otherwise, the process completes silently.
+
+**Transcription Mode Comparison:**
+
+| Mode                    | Layers Created         | Timing         | Text Source                    | Auto-Arranged | Best For                               |
+| ----------------------- | ---------------------- | -------------- | ------------------------------ | ------------- | -------------------------------------- |
+| Word-by-Word            | One per word           | Word-level     | Word transcription             | No            | Kinetic typography, word animations    |
+| Sentence Level          | One per sentence       | Sentence-level | Sentence transcription         | No            | Simple subtitles                       |
+| Sentence Level + Gemini | One per split sentence | Sentence-level | Sentence transcription (split) | No            | Captionable subtitles (max 9 words)    |
+| Separate Text Layers    | One per word           | Word-level     | Sentence transcription         | Yes           | Word animations with correct sentences |
 
 ### 4. Text Layer Utilities
 
-After generating word layers, you can use the utilities to format them into paragraphs. These tools work on any selected text layers.
+After generating text layers, you can use the utilities to format them into paragraphs. These tools work on any selected text layers.
+
+**Note:** If you used "Separate Text Layers" mode, words are already automatically arranged side-by-side. You can still use these utilities to rearrange or combine layers if needed.
 
 - **Configuration:**
 
@@ -258,6 +327,15 @@ If you change these settings, the API might need to download new model files on 
   - Use a GPU by setting `DEVICE` to `"cuda"` in `whisperAPI.py` (requires correct PyTorch installation).
 - **Incorrect Word Timing / Alignment Issues:**
   - Clear audio quality is crucial. Background noise or unclear speech can affect accuracy.
+- **Gemini Sentence Splitting Not Working:**
+  - Ensure you've entered a valid Gemini API key in the panel.
+  - Verify `google-generativeai` is installed if running from source: `pip install google-generativeai`
+  - Check the API console for Gemini-related error messages.
+  - If Gemini fails, the API will fall back to using original segments automatically.
+- **Separate Text Layers Mode Issues:**
+  - This mode makes two API calls, so it takes longer. Be patient.
+  - If word and sentence transcriptions don't match well, try using Word-by-Word mode instead.
+  - Check the summary alert at the end if there were any warnings during processing.
 
 ---
 
