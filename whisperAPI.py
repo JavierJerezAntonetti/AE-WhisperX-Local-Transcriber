@@ -146,22 +146,22 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
         detected_language.upper() if detected_language else "the detected language"
     )
 
-    prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable sentences suitable for video subtitles.
+    prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
 
 CRITICAL RULES:
-- Maximum 9 words per sentence (strict limit)
-- Split into natural, complete sentences that make sense on their own
-- Each sentence should be grammatically complete
-- Keep sentences concise for easy reading on screen
+- Maximum 9 words per segment (strict limit)
+- Split into natural phrases or complete sentences
+- Do NOT force capitalization at the start of each segment. Only capitalize if it is a proper noun or the actual start of a sentence in the original text.
+- Preserve the original casing as much as possible.
 - Preserve the original meaning and wording exactly
 - Do NOT add or remove words, only split at natural break points
-- Return ONLY a JSON array of strings, where each string is one sentence
-- Example format: ["First sentence.", "Second sentence.", "Third sentence."]
+- Return ONLY a JSON array of strings, where each string is one segment
+- Example format: ["this is a segment", "that continues here", "And this is a new sentence."]
 
 Transcription text (in {language_name}):
 {combined_text}
 
-Return the JSON array of sentences (max 9 words each):"""
+Return the JSON array of segments (max 9 words each):"""
 
     try:
         print(
