@@ -38,7 +38,9 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 - **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 2.0 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per sentence).
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
+- **Language Pre-definition:** Option to manually specify the language code (e.g., 'en', 'es') to skip auto-detection and speed up transcription.
 - **Dynamic Font Selector:** Automatically populates a dropdown with all system fonts on After Effects 24.0+, with a fallback to manual input for older versions.
+- **Smart Persistence:** Your settings for Language Code, Transcription Level, Separate Text Layers mode, and Gemini API Key are automatically saved and restored between sessions.
 - **Preset System:** Save and load different text styling and layout configurations. Your last used preset is automatically loaded when you restart After Effects.
 - **Text Layer Utilities:** Arrange individual word layers into centered paragraphs or combine them into a single, formatted text layer.
 - **Right-to-Left (RTL) Language Support:** Automatically detects RTL languages (like Arabic, Hebrew) and provides a manual override for correct layout when arranging or combining text.
@@ -233,11 +235,18 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
         - Perfect for creating word-by-word animations with correct sentence structure.
 
     - **Gemini API Key (Optional):**
+
       - Enter your Google Gemini API key to enable intelligent sentence splitting.
       - Only used when "Sentence Level" is selected.
       - Splits long sentences into short, captionable chunks (max 9 words per sentence).
       - The API key is automatically saved in After Effects settings.
       - Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+
+    - **Language Code (Optional):**
+      - Enter a 2-letter language code (e.g., `en` for English, `es` for Spanish, `fr` for French) to predefine the language.
+      - **Benefit:** Skips the auto-detection step, making the transcription process faster.
+      - Leave empty to let WhisperX auto-detect the language.
+      - This setting is automatically saved between sessions.
 
 3.  Click the "**Select Audio File & Start Transcription**" button.
 
@@ -307,6 +316,8 @@ Key variables at the top of `whisperAPI.py`:
 - `DEVICE`: Set to `"cpu"` (default) or `"cuda"` if you have an NVIDIA GPU.
 - `COMPUTE_TYPE`: Optimization for the model. `"int8"` for CPU, `"float16"` for CUDA are good starting points.
 - `BATCH_SIZE`: Affects transcription speed, especially on GPU. Default is `16`.
+
+**Note:** The API now accepts a `language` parameter from the AE script. If provided, it overrides the auto-detection logic.
 
 If you change these settings, the API might need to download new model files on the next run.
 

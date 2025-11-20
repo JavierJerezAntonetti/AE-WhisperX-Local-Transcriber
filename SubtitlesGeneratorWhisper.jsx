@@ -244,7 +244,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "3.0"; // Current version of the script
+  var SCRIPT_VERSION = "3.2"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
@@ -303,6 +303,7 @@ if (typeof JSON !== "object") {
   var transcriptionLevelDropdown; // Dropdown for word-by-word or sentence level
   var separateTextLayersCheckbox; // Checkbox for separate text layers mode
   var geminiApiKeyInput; // Input field for Gemini API key
+  var languageInput; // Input field for language code
 
   // --- Settings & Preset Configuration ---
   var SETTINGS_SECTION = "WhisperTranscriberPanel";
@@ -463,7 +464,8 @@ if (typeof JSON !== "object") {
     audioFile,
     transcriptionLevel,
     scriptTempFolder,
-    geminiApiKey
+    geminiApiKey,
+    languageCode
   ) {
     var responseFilePath =
       scriptTempFolder.fsName +
@@ -482,6 +484,11 @@ if (typeof JSON !== "object") {
       '\\"" -F "transcription_level=' +
       transcriptionLevel +
       '"';
+
+    // Add Language Code if provided
+    if (languageCode && languageCode.trim() !== "") {
+      curlCommand += ' -F "language=' + languageCode.trim() + '"';
+    }
 
     // Add Gemini API key if provided (for sentence-level splitting)
     if (
@@ -698,6 +705,9 @@ if (typeof JSON !== "object") {
       // --- Get Gemini API Key ---
       var geminiApiKey = geminiApiKeyInput ? geminiApiKeyInput.text : "";
 
+      // --- Get Language Code ---
+      var languageCode = languageInput ? languageInput.text : "";
+
       // --- API Call(s) ---
       var transcriptionData;
       var sentenceData;
@@ -713,13 +723,15 @@ if (typeof JSON !== "object") {
             audioFile,
             "word",
             scriptTempFolder,
-            ""
+            "",
+            languageCode
           );
           sentenceData = makeApiCall(
             audioFile,
             "sentence",
             scriptTempFolder,
-            geminiApiKey
+            geminiApiKey,
+            languageCode
           );
         } else {
           // Normal mode: single API call
@@ -729,7 +741,8 @@ if (typeof JSON !== "object") {
             audioFile,
             selectedTranscriptionLevel,
             scriptTempFolder,
-            apiKeyToUse
+            apiKeyToUse,
+            languageCode
           );
         }
       } catch (e_api) {
@@ -1999,6 +2012,15 @@ if (typeof JSON !== "object") {
     geminiApiKeyInput.helpTip =
       "Optional: Enter your Gemini API key to use Gemini 2.0 Flash for intelligent sentence splitting (max 9 words per sentence). Only used when Transcription Level is set to 'Sentence Level'. Leave empty to use original segments.";
 
+    // --- Language Input ---
+    var languageGroup = win.add("group");
+    languageGroup.orientation = "row";
+    languageGroup.add("statictext", undefined, "Language Code (Optional):");
+    languageInput = languageGroup.add("edittext", undefined, "");
+    languageInput.characters = 10;
+    languageInput.helpTip =
+      "Predefine language (e.g., 'en' for English, 'es' for Spanish) to speed up transcription. Leave empty for auto-detect.";
+
     // Try to load saved API key
     var savedApiKey = getSetting("Gemini_API_Key");
     if (savedApiKey) {
@@ -2008,6 +2030,46 @@ if (typeof JSON !== "object") {
     // Save API key when changed
     geminiApiKeyInput.onChange = function () {
       saveSetting("Gemini_API_Key", this.text);
+    };
+
+    // Try to load saved Language Code
+    var savedLanguage = getSetting("Language_Code");
+    if (savedLanguage) {
+      languageInput.text = savedLanguage;
+    }
+
+    // Save Language Code when changed
+    languageInput.onChange = function () {
+      saveSetting("Language_Code", this.text);
+    };
+
+    // Try to load saved Transcription Level
+    var savedLevel = getSetting("Transcription_Level");
+    if (savedLevel === "sentence") {
+      transcriptionLevelDropdown.selection = 1;
+    } else {
+      transcriptionLevelDropdown.selection = 0;
+    }
+
+    // Save Transcription Level when changed
+    transcriptionLevelDropdown.onChange = function () {
+      saveSetting(
+        "Transcription_Level",
+        this.selection.index === 1 ? "sentence" : "word"
+      );
+    };
+
+    // Try to load saved Separate Text Layers setting
+    var savedSeparateLayers = getSetting("Separate_Text_Layers");
+    if (savedSeparateLayers === "true") {
+      separateTextLayersCheckbox.value = true;
+    } else {
+      separateTextLayersCheckbox.value = false;
+    }
+
+    // Save Separate Text Layers setting when changed
+    separateTextLayersCheckbox.onClick = function () {
+      saveSetting("Separate_Text_Layers", this.value.toString());
     };
 
     var stylePanel = win.add("panel", undefined, "Text Styling Options");
