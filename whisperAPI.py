@@ -151,12 +151,14 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
 CRITICAL RULES:
 - Maximum 9 words per segment (strict limit)
 - Split into natural phrases or complete sentences
-- Do NOT force capitalization at the start of each segment. Only capitalize if it is a proper noun or the actual start of a sentence in the original text.
-- Preserve the original casing as much as possible.
+- Segments MUST NOT end with a comma (,) or a period (.)
+- Capitalize the first word of each segment only if it is the start of a new sentence in the original text
+- Preserve the original casing as much as possible for other words
 - Preserve the original meaning and wording exactly
 - Do NOT add or remove words, only split at natural break points
+- Avoid splitting in the middle of related phrases, concepts, or clauses - ensure each segment is self-contained and makes complete sense on its own
 - Return ONLY a JSON array of strings, where each string is one segment
-- Example format: ["this is a segment", "that continues here", "And this is a new sentence."]
+- Example format: ["this is a segment", "that continues here", "And this is a new sentence"]
 
 Transcription text (in {language_name}):
 {combined_text}
