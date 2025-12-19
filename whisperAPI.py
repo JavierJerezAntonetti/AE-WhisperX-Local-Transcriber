@@ -149,26 +149,38 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
     prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
 
 CRITICAL RULES:
-- Maximum 9 words per segment (strict limit)
-- Split into natural phrases or complete sentences
-- Segments MUST NOT end with a comma (,) or a period (.)
-- Capitalize the first word of each segment only if it is the start of a new sentence in the original text
-- Preserve the original casing as much as possible for other words
-- Preserve the original meaning and wording exactly
-- Do NOT add or remove words, only split at natural break points
-- Avoid splitting in the middle of related phrases, concepts, or clauses - ensure each segment is self-contained and makes complete sense on its own
-- Return ONLY a JSON array of strings, where each string is one segment
-- Example format: ["this is a segment", "that continues here", "And this is a new sentence"]
+    1. LENGTH CONSTRAINT: Maximum 6 words per segment.
+    2. GRAMMATICAL GLUE (High Priority):
+      - NEVER separate a pronoun from its verb (e.g., keep "se merece", "te quiero", "it is" together).
+      - NEVER separate a preposition from its noun (e.g., keep "con [Name]", "in the house", "para ti" together).
+      - NEVER separate an article from its noun (e.g., keep "la casa", "the car" together).
+    3. NO ORPHANS: Do not end a line with a weak word like "y", "que", "de", "el", "la", "a", "con", "the", "and", "or". Push them to the next line.
+    4. NATURAL FLOW:
+      - Split at natural pauses (commas, periods).
+      - Segments MUST NOT end with a comma (,) or a period (.).
+    5. FORMAT:
+      - Capitalize the first word of a segment ONLY if it starts a new sentence.
+      - Return ONLY a JSON array of strings.
+
+    ### PATTERN EXAMPLES (Follow this Logic):
+
+    TYPE A: The "Preposition/Article" Split
+    BAD:  ["I went to the", "park with my friend"]
+    GOOD: ["I went to the park", "with my friend"]
+    (Reason: Keep "to the park" and "with my friend" as complete units.)
+
+    TYPE B: The "Pronoun/Verb" Split
+    BAD:  ["Lo que realmente se", "merece es esto"]
+    GOOD: ["Lo que realmente se merece", "es esto"]
+    (Reason: "se" belongs to "merece". Never split them.)
 
 Transcription text (in {language_name}):
 {combined_text}
 
-Return the JSON array of segments (max 9 words each):"""
+Return the JSON array of segments:"""
 
     try:
-        print(
-            "Calling Gemini 2.0 Flash to split sentences into captionable chunks (max 9 words)..."
-        )
+        print("Calling Gemini 2.0 Flash to split sentences into captionable chunks...")
         # Try gemini-2.0-flash-exp first, fallback to gemini-1.5-flash if not available
         try:
             model = genai.GenerativeModel("gemini-2.0-flash-exp")
