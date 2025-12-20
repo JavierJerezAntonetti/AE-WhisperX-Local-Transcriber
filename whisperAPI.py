@@ -89,8 +89,8 @@ def allowed_file(filename):
 
 def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
     """
-    Use Gemini 2.5 Flash to intelligently split long segments into shorter,
-    human-readable, captionable sentences (max 9 words each).
+    Use Gemini 2.0 Flash to intelligently split long segments into shorter,
+    human-readable, captionable sentences.
 
     Args:
         segments: List of WhisperX segments with 'text', 'start', 'end'
@@ -154,7 +154,7 @@ CRITICAL RULES:
       - NEVER separate a pronoun from its verb (e.g., keep "se merece", "te quiero", "it is" together).
       - NEVER separate a preposition from its noun (e.g., keep "con [Name]", "in the house", "para ti" together).
       - NEVER separate an article from its noun (e.g., keep "la casa", "the car" together).
-    3. NO ORPHANS: Do not end a line with a weak word like "y", "que", "de", "el", "la", "a", "con", "the", "and", "or". Push them to the next line.
+    3. NO ORPHANS: Do not end a line with a weak word like "y", "que", "de", "el", "la", "a", "con", "the", "and", "or". Push them to the next or previous line mantaining the natural flow and grammatical structure.
     4. NATURAL FLOW:
       - Split at natural pauses (commas, periods).
       - Segments MUST NOT end with a comma (,) or a period (.).
@@ -412,7 +412,7 @@ def transcribe_audio():
                 # Use Gemini to intelligently split long segments into shorter sentences
                 if gemini_api_key:
                     print(
-                        "Using Gemini 2.0 Flash to split segments into captionable sentences (max 9 words)..."
+                        "Using Gemini 2.0 Flash to split segments into captionable sentences..."
                     )
                     final_segments = split_segments_with_gemini(
                         final_segments, gemini_api_key, detected_language
