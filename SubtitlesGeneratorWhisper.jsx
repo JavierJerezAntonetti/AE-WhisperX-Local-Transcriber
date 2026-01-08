@@ -304,6 +304,7 @@ if (typeof JSON !== "object") {
   var transcriptionLevelDropdown; // Dropdown for word-by-word or sentence level
   var separateTextLayersCheckbox; // Checkbox for separate text layers mode
   var geminiApiKeyInput; // Input field for Gemini API key
+  var languageInput; // Input field for Language Code
 
   // --- Settings & Preset Configuration ---
   var SETTINGS_SECTION = "WhisperTranscriberPanel";
@@ -493,6 +494,13 @@ if (typeof JSON !== "object") {
       // Escape the API key for curl (handle special characters)
       var escapedApiKey = geminiApiKey.replace(/"/g, '\\"');
       curlCommand += ' -F "gemini_api_key=' + escapedApiKey + '"';
+    }
+
+    // Add Language Code if provided
+    var langCode =
+      languageInput && languageInput.text ? languageInput.text.trim() : "";
+    if (langCode !== "") {
+      curlCommand += ' -F "language=' + langCode + '"';
     }
 
     curlCommand +=
@@ -2161,6 +2169,26 @@ if (typeof JSON !== "object") {
     // Save API key when changed
     geminiApiKeyInput.onChange = function () {
       saveSetting("Gemini_API_Key", this.text);
+    };
+
+    // --- Language Code Input ---
+    var languageGroup = win.add("group");
+    languageGroup.orientation = "row";
+    languageGroup.add("statictext", undefined, "Language Code:");
+    languageInput = languageGroup.add("edittext", undefined, "");
+    languageInput.characters = 10;
+    languageInput.helpTip =
+      "Optional: Enter language code (e.g., 'en', 'es', 'fr') to skip auto-detection and speed up transcription.";
+
+    // Try to load saved Language Code
+    var savedLanguage = getSetting("Language_Code");
+    if (savedLanguage) {
+      languageInput.text = savedLanguage;
+    }
+
+    // Save Language Code when changed
+    languageInput.onChange = function () {
+      saveSetting("Language_Code", this.text);
     };
 
     var stylePanel = win.add("panel", undefined, "Text Styling Options");

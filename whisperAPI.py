@@ -323,6 +323,11 @@ def transcribe_audio():
     # Get Gemini API key (optional, only needed for sentence-level splitting)
     gemini_api_key = request.form.get("gemini_api_key", "").strip()
 
+    # Get language (optional, to skip auto-detection)
+    language_code = request.form.get("language", "").strip()
+    if language_code == "":
+        language_code = None  # Use auto-detect if empty
+
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         temp_file_path = None
@@ -356,11 +361,14 @@ def transcribe_audio():
             audio = whisperx.load_audio(temp_file_path)
 
             print(
-                f"Transcribing with WhisperX model ({MODEL_SIZE}, Language: auto-detect)..."
+                f"Transcribing with WhisperX model ({MODEL_SIZE}, Language: {language_code if language_code else 'auto-detect'})..."
             )
             transcribe_start_time = time.time()
             # When language=None in load_model, transcribe will detect the language.
-            result = model.transcribe(audio, batch_size=BATCH_SIZE)
+            # If language_code is provided, transcribe refers to it.
+            result = model.transcribe(
+                audio, batch_size=BATCH_SIZE, language=language_code
+            )
             transcribe_duration = time.time() - transcribe_start_time
 
             detected_language = result.get("language")
