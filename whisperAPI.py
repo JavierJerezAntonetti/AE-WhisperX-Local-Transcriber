@@ -193,33 +193,63 @@ Return the JSON array of segments:"""
             except Exception:
                 model = genai.GenerativeModel("gemini-1.5-flash")
 
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.3,
-                "max_output_tokens": 2000,
-            },
-        )
+        # Try to try "response_mime_type": "application/json" if the library version supports it
+        # But for robustness against older libraries, we'll stick to text generation and robust parsing.
+        generation_config = {
+            "temperature": 0.2,
+            "max_output_tokens": 2000,
+        }
+
+        try:
+            # Attempt to enforce JSON via generation config (works in newer library versions)
+            config_with_json = generation_config.copy()
+            config_with_json["response_mime_type"] = "application/json"
+            response = model.generate_content(
+                prompt, generation_config=config_with_json
+            )
+        except Exception:
+            # Fallback for older libraries or if parameter key is rejected
+            print(
+                "Note: JSON MIME type enforcement not supported/failed, falling back to standard text generation."
+            )
+            response = model.generate_content(
+                prompt, generation_config=generation_config
+            )
 
         response_text = response.text.strip()
 
-        # Try to extract JSON from response (handle markdown code blocks)
-        if response_text.startswith("```"):
-            # Remove markdown code block markers
-            lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+        # Robust JSON Parsing
+        cleaned_text = response_text
+        import re
 
-        # Parse JSON
+        # 1. Toggle: Detect Markdown Code Block
+        # Looks for ```json [content] ``` or just ``` [content] ```
+        # re.DOTALL allows . to match newlines
+        code_block = re.search(
+            r"```(?:json)?\s*(.*?)```", response_text, re.DOTALL | re.IGNORECASE
+        )
+        if code_block:
+            cleaned_text = code_block.group(1).strip()
+
+        sentences = []
         try:
-            sentences = json.loads(response_text)
+            sentences = json.loads(cleaned_text)
         except json.JSONDecodeError:
-            # Try to extract JSON array manually
-            import re
-
-            json_match = re.search(r"\[.*\]", response_text, re.DOTALL)
-            if json_match:
-                sentences = json.loads(json_match.group())
+            # 2. Fallback: Detect JSON Array [...]
+            # Uses a greedy match from first [ to last ]
+            json_array_match = re.search(r"(\[.*\])", response_text, re.DOTALL)
+            if json_array_match:
+                try:
+                    sentences = json.loads(json_array_match.group(1))
+                except json.JSONDecodeError:
+                    print(
+                        f"DEBUG: Failed to parse extracted JSON array. Raw snippet: {json_array_match.group(1)[:200]}..."
+                    )
+                    raise ValueError("Could not parse Gemini response as JSON")
             else:
+                print(
+                    f"DEBUG: No valid JSON found. Raw Gemini Response: {response_text[:500]}"
+                )
                 raise ValueError("Could not parse Gemini response as JSON")
 
         if not isinstance(sentences, list) or len(sentences) == 0:
