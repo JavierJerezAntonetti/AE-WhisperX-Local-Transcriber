@@ -299,6 +299,7 @@ if (typeof JSON !== "object") {
   var maxCharsInput, maxWordsInput;
   var forceRtlCheckbox;
   var enableAnimationsCheckbox; // checkbox to enable/disable per-word pop-in animation
+  var enableFadeAnimationsCheckbox; // checkbox to enable/disable per-word fade-in animation
   var presetDropdown, savePresetBtn, deletePresetBtn; // Preset UI elements
   var transcriptionLevelDropdown; // Dropdown for word-by-word or sentence level
   var separateTextLayersCheckbox; // Checkbox for separate text layers mode
@@ -1111,6 +1112,25 @@ if (typeof JSON !== "object") {
                     }
                   } else {
                     scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
+                  }
+                }
+
+                // Only add fade-in animation if user enabled it in the UI
+                if (
+                  enableFadeAnimationsCheckbox &&
+                  enableFadeAnimationsCheckbox.value
+                ) {
+                  var opacityProp = textLayer
+                    .property("Transform")
+                    .property("Opacity");
+                  var fadeTime1 = adjustedStartTime;
+                  var fadeTime2 = adjustedStartTime + 4 * frameDuration;
+
+                  opacityProp.setValueAtTime(fadeTime1, 0);
+                  if (fadeTime2 < textLayer.outPoint) {
+                    opacityProp.setValueAtTime(fadeTime2, 100);
+                  } else {
+                    opacityProp.setValueAtTime(textLayer.outPoint, 100);
                   }
                 }
               }
@@ -2294,6 +2314,16 @@ if (typeof JSON !== "object") {
       "When checked, each word layer will receive a small pop-in scale animation. Disabled by default.";
     enableAnimationsCheckbox.value = false;
 
+    // Checkbox to enable/disable fade-in animations
+    enableFadeAnimationsCheckbox = animsGroup.add(
+      "checkbox",
+      undefined,
+      "Fade-in"
+    );
+    enableFadeAnimationsCheckbox.helpTip =
+      "When checked, each word layer will fade in from 0% to 100% opacity. Disabled by default.";
+    enableFadeAnimationsCheckbox.value = false;
+
     stylePanel.add(
       "statictext",
       undefined,
@@ -2526,6 +2556,23 @@ if (typeof JSON !== "object") {
         } catch (e_anim_restore) {
           // Ignore any errors restoring the checkbox state
         }
+      } else {
+        if (enableAnimationsCheckbox) enableAnimationsCheckbox.value = false;
+      }
+
+      // Restore fade animation checkbox state if present in preset
+      if (typeof settings.enableFadeAnimations !== "undefined") {
+        try {
+          if (enableFadeAnimationsCheckbox) {
+            enableFadeAnimationsCheckbox.value =
+              !!settings.enableFadeAnimations;
+          }
+        } catch (e_fade_restore) {
+          // Ignore
+        }
+      } else {
+        if (enableFadeAnimationsCheckbox)
+          enableFadeAnimationsCheckbox.value = false;
       }
       maxCharsInput.text = settings.maxChars || DEFAULT_MAX_CHARS_PER_LINE;
       maxWordsInput.text = settings.maxWords || DEFAULT_MAX_WORDS_PER_LINE;
@@ -2573,6 +2620,10 @@ if (typeof JSON !== "object") {
           // Persist animation checkbox state
           enableAnimations:
             enableAnimationsCheckbox && enableAnimationsCheckbox.value
+              ? true
+              : false,
+          enableFadeAnimations:
+            enableFadeAnimationsCheckbox && enableFadeAnimationsCheckbox.value
               ? true
               : false,
         };
