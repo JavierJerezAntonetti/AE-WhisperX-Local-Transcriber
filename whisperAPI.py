@@ -89,66 +89,24 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
+def _call_gemini_split(text, detected_language, gemini_api_key):
     """
-    Use Gemini 2.0 Flash to intelligently split long segments into shorter,
-    human-readable, captionable sentences.
-
-    Args:
-        segments: List of WhisperX segments with 'text', 'start', 'end'
-        gemini_api_key: Gemini API key
-        detected_language: Language code for better context
-
-    Returns:
-        List of new segments with better sentence splitting
+    Helper function to call Gemini and return a list of sentence strings.
     """
-    if not GEMINI_AVAILABLE:
-        print("Google Generative AI library not available. Returning segments as-is.")
-        return segments
-
-    if not gemini_api_key:
-        print("No Gemini API key provided. Returning segments as-is.")
-        return segments
-
     try:
-        genai.configure(api_key=gemini_api_key)
-    except Exception as e:
-        print(f"Error configuring Gemini API: {e}")
-        return segments
+        try:
+            model = genai.GenerativeModel("gemini-2.0-flash")
+        except Exception:
+            try:
+                model = genai.GenerativeModel("gemini-1.5-flash")
+            except Exception:
+                model = genai.GenerativeModel("gemini-1.5-flash")
 
-    # Combine all segment texts for processing
-    all_texts = []
-    segment_metadata = []  # Store original timing info
+        language_name = (
+            detected_language.upper() if detected_language else "the detected language"
+        )
 
-    for seg in segments:
-        text = seg.get("text", "").strip()
-        if text:
-            all_texts.append(text)
-            segment_metadata.append(
-                {
-                    "start": seg.get("start", 0.0),
-                    "end": seg.get("end", 0.0),
-                    "original_text": text,
-                }
-            )
-
-    if not all_texts:
-        return segments
-
-    # Combine into one text for Gemini processing
-    combined_text = " ".join(all_texts)
-
-    # Calculate total duration
-    total_start = segment_metadata[0]["start"] if segment_metadata else 0.0
-    total_end = segment_metadata[-1]["end"] if segment_metadata else 0.0
-    total_duration = total_end - total_start
-
-    # Prepare prompt for Gemini
-    language_name = (
-        detected_language.upper() if detected_language else "the detected language"
-    )
-
-    prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
+        prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
 
 CRITICAL RULES:
     1. LENGTH CONSTRAINT: Maximum 9 words per segment, keep it natural.
@@ -177,38 +135,22 @@ CRITICAL RULES:
     (Reason: "se" belongs to "merece". Never split them.)
 
 Transcription text (in {language_name}):
-{combined_text}
+{text}
 
 Return the JSON array of segments:"""
 
-    try:
-        print("Calling Gemini 2.0 Flash to split sentences into captionable chunks...")
-        try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
-            print("Using gemini-2.0-flash")
-        except Exception:
-            try:
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                print("Using gemini-1.5-flash (gemini-2.0-flash not available)")
-            except Exception:
-                model = genai.GenerativeModel("gemini-1.5-flash")
-
-        # Try to try "response_mime_type": "application/json" if the library version supports it
-        # But for robustness against older libraries, we'll stick to text generation and robust parsing.
         generation_config = {
             "temperature": 0.2,
             "max_output_tokens": 8192,
         }
 
         try:
-            # Attempt to enforce JSON via generation config (works in newer library versions)
             config_with_json = generation_config.copy()
             config_with_json["response_mime_type"] = "application/json"
             response = model.generate_content(
                 prompt, generation_config=config_with_json
             )
         except Exception:
-            # Fallback for older libraries or if parameter key is rejected
             print(
                 "Note: JSON MIME type enforcement not supported/failed, falling back to standard text generation."
             )
@@ -222,9 +164,6 @@ Return the JSON array of segments:"""
         cleaned_text = response_text
         import re
 
-        # 1. Toggle: Detect Markdown Code Block
-        # Looks for ```json [content] ``` or just ``` [content] ```
-        # re.DOTALL allows . to match newlines
         code_block = re.search(
             r"```(?:json)?\s*(.*?)```", response_text, re.DOTALL | re.IGNORECASE
         )
@@ -235,8 +174,6 @@ Return the JSON array of segments:"""
         try:
             sentences = json.loads(cleaned_text)
         except json.JSONDecodeError:
-            # 2. Fallback: Detect JSON Array [...]
-            # Uses a greedy match from first [ to last ]
             json_array_match = re.search(r"(\[.*\])", response_text, re.DOTALL)
             if json_array_match:
                 try:
@@ -245,26 +182,20 @@ Return the JSON array of segments:"""
                     print(
                         f"DEBUG: Failed to parse extracted JSON array. Raw snippet: {json_array_match.group(1)[:200]}..."
                     )
-
-                    # 3. Last Resort: Try to fix truncated JSON (if it looks like a list)
+                    # Recover from truncated JSON
                     try:
                         potential_json = json_array_match.group(1)
-                        # If it doesn't end with ], it might be truncated.
                         if not potential_json.strip().endswith("]"):
                             print(
                                 "DEBUG: JSON appears truncated. Attempting simple repair..."
                             )
-                            # Find the last quote and cut off everything after it, then close the array
                             last_quote_idx = potential_json.rfind('"')
                             if last_quote_idx > 0:
                                 repair_attempt = (
                                     potential_json[: last_quote_idx + 1] + "]"
                                 )
-                                try:
-                                    sentences = json.loads(repair_attempt)
-                                    print("DEBUG: Repair successful.")
-                                except:
-                                    pass
+                                sentences = json.loads(repair_attempt)
+                                print("DEBUG: Repair successful.")
                     except:
                         pass
 
@@ -274,58 +205,133 @@ Return the JSON array of segments:"""
                 print(
                     f"DEBUG: No valid JSON found. Raw Gemini Response: {response_text[:500]}"
                 )
-
-                # Check for truncation without brackets
                 if response_text.strip().startswith(
                     "["
                 ) and not response_text.strip().endswith("]"):
                     print(
                         "DEBUG: Response starts with '[' but does not end with ']'. Likely token limit reached."
                     )
-
                 raise ValueError("Could not parse Gemini response as JSON")
 
-        if not isinstance(sentences, list) or len(sentences) == 0:
-            print("Gemini returned invalid format. Using original segments.")
-            return segments
+        return sentences
+
+    except Exception as e:
+        print(f"Error in Gemini call: {e}")
+        return None
+
+
+def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
+    """
+    Use Gemini 2.0 Flash to intelligently split long segments.
+    Processes in chunks to avoid token limits.
+    """
+    if not GEMINI_AVAILABLE:
+        print("Google Generative AI library not available. Returning segments as-is.")
+        return segments
+
+    if not gemini_api_key:
+        print("No Gemini API key provided. Returning segments as-is.")
+        return segments
+
+    try:
+        genai.configure(api_key=gemini_api_key)
+    except Exception as e:
+        print(f"Error configuring Gemini API: {e}")
+        return segments
+
+    if not segments:
+        return segments
+
+    try:
+        print("Using Gemini 2.0 Flash to split segments (with chunking)...")
+
+        # 1. Chunk segments by duration (e.g. 120 seconds per chunk)
+        CHUNK_DURATION_SECONDS = 120
+        chunks = []
+        current_chunk = []
+        chunk_start = segments[0].get("start", 0)
+
+        for seg in segments:
+            current_chunk.append(seg)
+            if seg.get("end", 0) - chunk_start >= CHUNK_DURATION_SECONDS:
+                chunks.append(current_chunk)
+                current_chunk = []
+                # Will set start time at next iteration or after loop
+                if segments.index(seg) + 1 < len(segments):
+                    chunk_start = segments[segments.index(seg) + 1].get("start", 0)
+
+        if current_chunk:
+            chunks.append(current_chunk)
 
         print(
-            f"Gemini split text into {len(sentences)} captionable sentences (from {len(segments)} segments)"
+            f"Split {len(segments)} segments into {len(chunks)} chunks for processing."
         )
 
-        # Distribute timing proportionally based on character count
-        total_chars = len(combined_text)
-        new_segments = []
-        current_char_pos = 0
+        final_processed_segments = []
 
-        for i, sentence in enumerate(sentences):
-            if not sentence or not sentence.strip():
+        for i, chunk in enumerate(chunks):
+            print(f"Processing chunk {i+1}/{len(chunks)} ({len(chunk)} segments)...")
+
+            # Prepare text for this chunk
+            chunk_texts = [
+                s.get("text", "").strip() for s in chunk if s.get("text", "").strip()
+            ]
+            if not chunk_texts:
                 continue
 
-            sentence = sentence.strip()
-            sentence_chars = len(sentence)
+            combined_text = " ".join(chunk_texts)
 
-            # Calculate proportional timing
-            if total_chars > 0:
-                char_proportion_start = current_char_pos / total_chars
-                char_proportion_end = (current_char_pos + sentence_chars) / total_chars
-            else:
-                char_proportion_start = i / len(sentences)
-                char_proportion_end = (i + 1) / len(sentences)
+            # Calculate chunk boundaries
+            chunk_start_time = chunk[0].get("start", 0)
+            chunk_end_time = chunk[-1].get("end", 0)
+            chunk_duration = chunk_end_time - chunk_start_time
 
-            sentence_start = total_start + (total_duration * char_proportion_start)
-            sentence_end = total_start + (total_duration * char_proportion_end)
-
-            # Ensure sentence_end doesn't exceed total_end
-            sentence_end = min(sentence_end, total_end)
-
-            new_segments.append(
-                {"text": sentence, "start": sentence_start, "end": sentence_end}
+            # Call Gemini
+            sentences = _call_gemini_split(
+                combined_text, detected_language, gemini_api_key
             )
 
-            current_char_pos += sentence_chars + 1  # +1 for space
+            if not sentences or not isinstance(sentences, list) or len(sentences) == 0:
+                print(f"Gemini failed for chunk {i+1}, using original chunk segments.")
+                final_processed_segments.extend(chunk)
+                continue
 
-        return new_segments
+            # Map sentences to timestamps
+            total_chars = len(combined_text)
+            current_char_pos = 0
+
+            for j, sentence in enumerate(sentences):
+                if not sentence or not sentence.strip():
+                    continue
+
+                sentence = sentence.strip()
+                sentence_chars = len(sentence)
+
+                # Calculate proportional timing relative to chunk start
+                if total_chars > 0:
+                    char_proportion_start = current_char_pos / total_chars
+                    char_proportion_end = (
+                        current_char_pos + sentence_chars
+                    ) / total_chars
+                else:
+                    char_proportion_start = j / len(sentences)
+                    char_proportion_end = (j + 1) / len(sentences)
+
+                sentence_start = chunk_start_time + (
+                    chunk_duration * char_proportion_start
+                )
+                sentence_end = chunk_start_time + (chunk_duration * char_proportion_end)
+
+                # Clamp to chunk boundaries
+                sentence_end = min(sentence_end, chunk_end_time)
+
+                final_processed_segments.append(
+                    {"text": sentence, "start": sentence_start, "end": sentence_end}
+                )
+
+                current_char_pos += sentence_chars + 1  # +1 for space
+
+        return final_processed_segments
 
     except Exception as e:
         print(f"Error calling Gemini for sentence splitting: {e}")
