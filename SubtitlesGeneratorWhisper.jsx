@@ -803,6 +803,56 @@ if (typeof JSON !== "object") {
           timeOffset = 3 * frameDuration;
         }
 
+        // --- OPTIMIZATION START: Pre-configure TextDocument ---
+        // Creating a new TextDocument object and setting properties for every word is slow.
+        // We create a template once and reuse it.
+        var templateTextDocument = null;
+        var tempTemplateLayer = null;
+        {
+          tempTemplateLayer = comp.layers.addText("TEMPLATE"); // Create dummy layer
+          tempTemplateLayer.enabled = false; // Hide it
+          var tempProp = tempTemplateLayer.property("Source Text");
+          templateTextDocument = tempProp.value;
+
+          templateTextDocument.font = currentFontName;
+          templateTextDocument.fontSize = currentFontSize;
+          templateTextDocument.fillColor = currentFillColor;
+          templateTextDocument.justification =
+            ParagraphJustification.CENTER_JUSTIFY;
+
+          try {
+            templateTextDocument.tracking = -55;
+          } catch (e_track) {}
+
+          try {
+            if (
+              typeof FontCapsOption !== "undefined" &&
+              typeof templateTextDocument.fontCapsOption !== "undefined"
+            ) {
+              templateTextDocument.fontCapsOption =
+                FontCapsOption.FONT_NORMAL_CAPS;
+            } else {
+              if (typeof templateTextDocument.allCaps !== "undefined")
+                templateTextDocument.allCaps = false;
+              if (typeof templateTextDocument.smallCaps !== "undefined")
+                templateTextDocument.smallCaps = false;
+            }
+          } catch (e_caps) {}
+
+          if (currentStrokeWidth > 0) {
+            templateTextDocument.applyStroke = true;
+            templateTextDocument.strokeColor = currentStrokeColor;
+            templateTextDocument.strokeWidth = currentStrokeWidth;
+            templateTextDocument.strokeOverFill = false;
+            templateTextDocument.lineJoinType = LineJoinType.LINE_JOIN_ROUND;
+          } else {
+            templateTextDocument.applyStroke = false;
+          }
+
+          // Do NOT remove layer yet, as it invalidates the TextDocument object reference in some AE versions
+        }
+        // --- OPTIMIZATION END ---
+
         // Determine if we should process word-by-word or sentence-by-sentence
         var shouldProcessWords =
           selectedTranscriptionLevel === "word" || isSeparateMode;
@@ -847,41 +897,9 @@ if (typeof JSON !== "object") {
 
               var textProp = textLayer.property("Source Text");
               if (textProp && textProp.numKeys === 0) {
-                var textDocument = textProp.value;
-                textDocument.font = currentFontName;
-                textDocument.fontSize = currentFontSize;
-                textDocument.fillColor = currentFillColor;
-                textDocument.justification =
-                  ParagraphJustification.CENTER_JUSTIFY;
-                try {
-                  textDocument.tracking = -55;
-                } catch (e_tracking_set) {}
-                try {
-                  if (
-                    typeof FontCapsOption !== "undefined" &&
-                    typeof textDocument.fontCapsOption !== "undefined"
-                  ) {
-                    textDocument.fontCapsOption =
-                      FontCapsOption.FONT_NORMAL_CAPS;
-                  } else {
-                    if (typeof textDocument.allCaps !== "undefined") {
-                      textDocument.allCaps = false;
-                    }
-                    if (typeof textDocument.smallCaps !== "undefined") {
-                      textDocument.smallCaps = false;
-                    }
-                  }
-                } catch (e_fontcaps) {}
-                if (currentStrokeWidth > 0) {
-                  textDocument.applyStroke = true;
-                  textDocument.strokeColor = currentStrokeColor;
-                  textDocument.strokeWidth = currentStrokeWidth;
-                  textDocument.strokeOverFill = false;
-                  textDocument.lineJoinType = LineJoinType.LINE_JOIN_ROUND;
-                } else {
-                  textDocument.applyStroke = false;
-                }
-                textProp.setValue(textDocument);
+                // OPTIMIZED: Use pre-configured template
+                templateTextDocument.text = sentenceText;
+                textProp.setValue(templateTextDocument);
               }
 
               try {
@@ -1024,49 +1042,9 @@ if (typeof JSON !== "object") {
 
               var textProp = textLayer.property("Source Text");
               if (textProp && textProp.numKeys === 0) {
-                var textDocument = textProp.value;
-                textDocument.font = currentFontName;
-                textDocument.fontSize = currentFontSize;
-                textDocument.fillColor = currentFillColor;
-                textDocument.justification =
-                  ParagraphJustification.CENTER_JUSTIFY;
-                // Ensure consistent character tracking (kerning) as requested
-                try {
-                  textDocument.tracking = -55;
-                } catch (e_tracking_set) {
-                  // Older AE versions may not support tracking; ignore silently
-                }
-                // Set font caps option if available (AE CC 2018+), otherwise
-                // fall back to older allCaps/smallCaps properties for legacy AE.
-                try {
-                  if (
-                    typeof FontCapsOption !== "undefined" &&
-                    typeof textDocument.fontCapsOption !== "undefined"
-                  ) {
-                    textDocument.fontCapsOption =
-                      FontCapsOption.FONT_NORMAL_CAPS;
-                  } else {
-                    if (typeof textDocument.allCaps !== "undefined") {
-                      textDocument.allCaps = false;
-                    }
-                    if (typeof textDocument.smallCaps !== "undefined") {
-                      textDocument.smallCaps = false;
-                    }
-                  }
-                } catch (e_fontcaps) {
-                  // Older AE versions or unexpected runtime errors may
-                  // throw; silently ignore to keep the script robust.
-                }
-                if (currentStrokeWidth > 0) {
-                  textDocument.applyStroke = true;
-                  textDocument.strokeColor = currentStrokeColor;
-                  textDocument.strokeWidth = currentStrokeWidth;
-                  textDocument.strokeOverFill = false;
-                  textDocument.lineJoinType = LineJoinType.LINE_JOIN_ROUND;
-                } else {
-                  textDocument.applyStroke = false;
-                }
-                textProp.setValue(textDocument);
+                // OPTIMIZED: Use pre-configured template
+                templateTextDocument.text = wordText;
+                textProp.setValue(templateTextDocument);
               }
 
               // Set layer-level render order to "All Fills Over All Strokes"
@@ -1081,22 +1059,20 @@ if (typeof JSON !== "object") {
                 // This might fail on very old AE versions, but it's safe to ignore.
               }
 
+              // OPTIMIZATION: skipped sourceRectAtTime for massive speedup
+              /*
               try {
                 var rect = textLayer.sourceRectAtTime(adjustedStartTime, false);
                 if (rect && rect.width > 0 && rect.height > 0) {
                   var newAnchorX = rect.left + rect.width / 2;
-                  // Set the vertical anchor to 0 (the baseline)
-                  // instead of the geometric center of the bounding box.
                   var newAnchorY = 0;
                   textLayer
                     .property("Transform")
                     .property("Anchor Point")
                     .setValue([newAnchorX, newAnchorY]);
                 }
-              } catch (e_anchor) {
-                // Optional: Log this error if it occurs frequently
-                // $.writeln("Anchor point error: " + e_anchor.toString());
-              }
+              } catch (e_anchor) {}
+              */
               var positionProp = textLayer
                 .property("Transform")
                 .property("Position");
@@ -1151,6 +1127,12 @@ if (typeof JSON !== "object") {
               createdTextLayers.push(textLayer);
             }
           }
+        }
+
+        // Clean up the template layer
+        if (tempTemplateLayer) {
+          tempTemplateLayer.remove();
+          tempTemplateLayer = null;
         }
 
         // Auto-arrange words side-by-side if in separate text layers mode
