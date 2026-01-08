@@ -1889,6 +1889,17 @@ if (typeof JSON !== "object") {
         return a.inPoint - b.inPoint;
       });
 
+      // Get Max Chars and Max Words settings
+      var maxChars = parseInt(maxCharsInput.text, 10);
+      if (isNaN(maxChars) || maxChars <= 0) {
+        maxChars = DEFAULT_MAX_CHARS_PER_LINE;
+      }
+
+      var maxWords = parseInt(maxWordsInput.text, 10);
+      if (isNaN(maxWords) || maxWords <= 0) {
+        maxWords = DEFAULT_MAX_WORDS_PER_LINE;
+      }
+
       // Group layers by Out Point (End Time) with a small tolerance
       var groups = [];
       var TOLERANCE = 0.01; // 10ms tolerance
@@ -1928,25 +1939,58 @@ if (typeof JSON !== "object") {
         var targetLayer = groupLayers[0];
         var otherLayers = groupLayers.slice(1);
 
-        var combinedText = "";
+        // Collect all words
+        var allWords = [];
         for (var k = 0; k < groupLayers.length; k++) {
           var layerVal = groupLayers[k].property("Source Text").value;
           var txt = layerVal.text;
-          // Clean string slightly if needed
           if (typeof txt === "string") txt = txt.trim();
           else txt = String(txt).trim();
 
           if (txt !== "") {
-            combinedText += (combinedText !== "" ? " " : "") + txt;
+            var words = txt.split(/\s+/);
+            for (var w = 0; w < words.length; w++) {
+              if (words[w] !== "") allWords.push(words[w]);
+            }
           }
         }
 
-        if (combinedText === "") continue;
+        if (allWords.length === 0) continue;
+
+        // Build text with max chars/words per line
+        var combinedText = "";
+        var currentLine = "";
+        var currentLineWordCount = 0;
+
+        for (var w = 0; w < allWords.length; w++) {
+          var word = allWords[w];
+
+          if (currentLineWordCount > 0) {
+            if (
+              currentLineWordCount >= maxWords ||
+              currentLine.length + 1 + word.length > maxChars
+            ) {
+              combinedText += currentLine + "\r";
+              currentLine = word;
+              currentLineWordCount = 1;
+            } else {
+              currentLine += " " + word;
+              currentLineWordCount++;
+            }
+          } else {
+            currentLine = word;
+            currentLineWordCount = 1;
+          }
+        }
+        if (currentLine !== "") {
+          combinedText += currentLine;
+        }
 
         try {
+          var plainText = combinedText.replace(/\r/g, " ");
           targetLayer.name =
             "S_Comb_" +
-            combinedText.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 15);
+            plainText.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 15);
         } catch (e_name) {
           targetLayer.name = "S_Combined";
         }
