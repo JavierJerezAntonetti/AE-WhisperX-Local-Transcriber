@@ -197,7 +197,7 @@ Return the JSON array of segments:"""
         # But for robustness against older libraries, we'll stick to text generation and robust parsing.
         generation_config = {
             "temperature": 0.2,
-            "max_output_tokens": 2000,
+            "max_output_tokens": 8192,
         }
 
         try:
@@ -245,11 +245,44 @@ Return the JSON array of segments:"""
                     print(
                         f"DEBUG: Failed to parse extracted JSON array. Raw snippet: {json_array_match.group(1)[:200]}..."
                     )
-                    raise ValueError("Could not parse Gemini response as JSON")
+
+                    # 3. Last Resort: Try to fix truncated JSON (if it looks like a list)
+                    try:
+                        potential_json = json_array_match.group(1)
+                        # If it doesn't end with ], it might be truncated.
+                        if not potential_json.strip().endswith("]"):
+                            print(
+                                "DEBUG: JSON appears truncated. Attempting simple repair..."
+                            )
+                            # Find the last quote and cut off everything after it, then close the array
+                            last_quote_idx = potential_json.rfind('"')
+                            if last_quote_idx > 0:
+                                repair_attempt = (
+                                    potential_json[: last_quote_idx + 1] + "]"
+                                )
+                                try:
+                                    sentences = json.loads(repair_attempt)
+                                    print("DEBUG: Repair successful.")
+                                except:
+                                    pass
+                    except:
+                        pass
+
+                    if not sentences:
+                        raise ValueError("Could not parse Gemini response as JSON")
             else:
                 print(
                     f"DEBUG: No valid JSON found. Raw Gemini Response: {response_text[:500]}"
                 )
+
+                # Check for truncation without brackets
+                if response_text.strip().startswith(
+                    "["
+                ) and not response_text.strip().endswith("]"):
+                    print(
+                        "DEBUG: Response starts with '[' but does not end with ']'. Likely token limit reached."
+                    )
+
                 raise ValueError("Could not parse Gemini response as JSON")
 
         if not isinstance(sentences, list) or len(sentences) == 0:
