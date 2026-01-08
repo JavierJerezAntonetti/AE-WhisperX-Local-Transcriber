@@ -502,13 +502,6 @@ if (typeof JSON !== "object") {
       curlCommand += ' -F "gemini_api_key=' + escapedApiKey + '"';
     }
 
-    // Add Language Code if provided
-    var langCode =
-      languageInput && languageInput.text ? languageInput.text.trim() : "";
-    if (langCode !== "") {
-      curlCommand += ' -F "language=' + langCode + '"';
-    }
-
     curlCommand +=
       ' "' + WHISPER_API_URL + '" -o "' + responsePathForCurl + '"';
 
@@ -2191,15 +2184,6 @@ if (typeof JSON !== "object") {
     geminiApiKeyInput.onChange = function () {
       saveSetting("Gemini_API_Key", this.text);
     };
-
-    // --- Language Code Input ---
-    var languageGroup = win.add("group");
-    languageGroup.orientation = "row";
-    languageGroup.add("statictext", undefined, "Language Code:");
-    languageInput = languageGroup.add("edittext", undefined, "");
-    languageInput.characters = 10;
-    languageInput.helpTip =
-      "Optional: Enter language code (e.g., 'en', 'es', 'fr') to skip auto-detection and speed up transcription.";
 
     // Try to load saved Language Code
     var savedLanguage = getSetting("Language_Code");
