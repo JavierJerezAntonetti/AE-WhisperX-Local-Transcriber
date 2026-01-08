@@ -149,15 +149,15 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
     prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
 
 CRITICAL RULES:
-    1. LENGTH CONSTRAINT: Maximum 6 words per segment.
+    1. LENGTH CONSTRAINT: Maximum 9 words per segment, keep it natural.
     2. GRAMMATICAL GLUE (High Priority):
       - NEVER separate a pronoun from its verb (e.g., keep "se merece", "te quiero", "it is" together).
       - NEVER separate a preposition from its noun (e.g., keep "con [Name]", "in the house", "para ti" together).
       - NEVER separate an article from its noun (e.g., keep "la casa", "the car" together).
-    3. NO ORPHANS: Do not end a line with a weak word like "y", "que", "de", "el", "la", "a", "con", "the", "and", "or". Push them to the next or previous line mantaining the natural flow and grammatical structure.
+    3. NO ORPHANS: Do not end a line with a weak word like "y", "que", "de", "el", "la", "a", "con", "the", "and", "or". Push them to the next segment mantaining the natural flow and grammatical structure.
     4. NATURAL FLOW:
       - Split at natural pauses (commas, periods).
-      - Segments MUST NOT end with a comma (,) or a period (.).
+      - Segments MUST NOT end with a comma (,) or a period (.), just ignore those punctuation marks at the end of each segment, only use them in between segments to guide splits.
     5. FORMAT:
       - Capitalize the first word of a segment ONLY if it starts a new sentence.
       - Return ONLY a JSON array of strings.
@@ -181,13 +181,13 @@ Return the JSON array of segments:"""
 
     try:
         print("Calling Gemini 2.0 Flash to split sentences into captionable chunks...")
-        # Try gemini-2.0-flash-exp first, fallback to gemini-1.5-flash if not available
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            print("Using gemini-2.0-flash")
         except Exception:
             try:
                 model = genai.GenerativeModel("gemini-1.5-flash")
-                print("Using gemini-1.5-flash (gemini-2.0-flash-exp not available)")
+                print("Using gemini-1.5-flash (gemini-2.0-flash not available)")
             except Exception:
                 model = genai.GenerativeModel("gemini-1.5-flash")
 
