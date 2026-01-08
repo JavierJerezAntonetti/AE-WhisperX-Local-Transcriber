@@ -299,6 +299,7 @@ if (typeof JSON !== "object") {
   var maxCharsInput, maxWordsInput;
   var forceRtlCheckbox;
   var enableAnimationsCheckbox; // checkbox to enable/disable per-word pop-in animation
+  var enableFadeAnimationsCheckbox; // checkbox to enable/disable per-word fade-in animation
   var presetDropdown, savePresetBtn, deletePresetBtn; // Preset UI elements
   var transcriptionLevelDropdown; // Dropdown for word-by-word or sentence level
   var separateTextLayersCheckbox; // Checkbox for separate text layers mode
@@ -499,6 +500,13 @@ if (typeof JSON !== "object") {
       // Escape the API key for curl (handle special characters)
       var escapedApiKey = geminiApiKey.replace(/"/g, '\\"');
       curlCommand += ' -F "gemini_api_key=' + escapedApiKey + '"';
+    }
+
+    // Add Language Code if provided
+    var langCode =
+      languageInput && languageInput.text ? languageInput.text.trim() : "";
+    if (langCode !== "") {
+      curlCommand += ' -F "language=' + langCode + '"';
     }
 
     curlCommand +=
@@ -1124,6 +1132,25 @@ if (typeof JSON !== "object") {
                     }
                   } else {
                     scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
+                  }
+                }
+
+                // Only add fade-in animation if user enabled it in the UI
+                if (
+                  enableFadeAnimationsCheckbox &&
+                  enableFadeAnimationsCheckbox.value
+                ) {
+                  var opacityProp = textLayer
+                    .property("Transform")
+                    .property("Opacity");
+                  var fadeTime1 = adjustedStartTime;
+                  var fadeTime2 = adjustedStartTime + 4 * frameDuration;
+
+                  opacityProp.setValueAtTime(fadeTime1, 0);
+                  if (fadeTime2 < textLayer.outPoint) {
+                    opacityProp.setValueAtTime(fadeTime2, 100);
+                  } else {
+                    opacityProp.setValueAtTime(textLayer.outPoint, 100);
                   }
                 }
               }
@@ -1857,6 +1884,139 @@ if (typeof JSON !== "object") {
     }
   };
 
+  // --- Function to Combine Groups of Words by Shared End Time ---
+  var combineGroupsByEndTime = function () {
+    app.beginUndoGroup("Combine Text Groups by End Time");
+    try {
+      var comp = app.project.activeItem;
+      if (!(comp instanceof CompItem)) {
+        alert("Please select or open a composition first.");
+        app.endUndoGroup();
+        return;
+      }
+
+      var selectedLayers = comp.selectedLayers;
+      var textLayers = [];
+      for (var i = 0; i < selectedLayers.length; i++) {
+        if (selectedLayers[i] instanceof TextLayer) {
+          textLayers.push(selectedLayers[i]);
+        }
+      }
+
+      if (textLayers.length === 0) {
+        alert("Please select text layers to combine.");
+        app.endUndoGroup();
+        return;
+      }
+
+      // Sort layers by inPoint (start time) to ensure correct word order
+      textLayers.sort(function (a, b) {
+        return a.inPoint - b.inPoint;
+      });
+
+      // Group layers by Out Point (End Time) with a small tolerance
+      var groups = [];
+      var TOLERANCE = 0.01; // 10ms tolerance
+
+      for (var i = 0; i < textLayers.length; i++) {
+        var layer = textLayers[i];
+        var outTime = layer.outPoint;
+        var foundGroup = false;
+
+        for (var g = 0; g < groups.length; g++) {
+          if (Math.abs(groups[g].outTime - outTime) < TOLERANCE) {
+            groups[g].layers.push(layer);
+            foundGroup = true;
+            break;
+          }
+        }
+
+        if (!foundGroup) {
+          groups.push({ outTime: outTime, layers: [layer] });
+        }
+      }
+
+      var groupsProcessed = 0;
+
+      for (var g = 0; g < groups.length; g++) {
+        var groupLayers = groups[g].layers;
+
+        // Only combine if there's more than one layer in the group
+        if (groupLayers.length < 2) continue;
+
+        // Double-check sorting within group by inPoint
+        groupLayers.sort(function (a, b) {
+          return a.inPoint - b.inPoint;
+        });
+
+        // The first layer (timeline-wise) becomes the container
+        var targetLayer = groupLayers[0];
+        var otherLayers = groupLayers.slice(1);
+
+        var combinedText = "";
+        for (var k = 0; k < groupLayers.length; k++) {
+          var layerVal = groupLayers[k].property("Source Text").value;
+          var txt = layerVal.text;
+          // Clean string slightly if needed
+          if (typeof txt === "string") txt = txt.trim();
+          else txt = String(txt).trim();
+
+          if (txt !== "") {
+            combinedText += (combinedText !== "" ? " " : "") + txt;
+          }
+        }
+
+        if (combinedText === "") continue;
+
+        try {
+          targetLayer.name =
+            "S_Comb_" +
+            combinedText.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 15);
+        } catch (e_name) {
+          targetLayer.name = "S_Combined";
+        }
+
+        // Update source text
+        var textProp = targetLayer.property("Source Text");
+        var textDoc = textProp.value;
+        textDoc.text = combinedText;
+        textProp.setValue(textDoc);
+
+        // Reset Anchor Point and Position (Center in Comp)
+        try {
+          var rect = targetLayer.sourceRectAtTime(
+            targetLayer.inPoint + 0.001,
+            false
+          );
+          if (rect) {
+            var newAnchorX = rect.left + rect.width / 2;
+            var newAnchorY = rect.top + rect.height / 2;
+            targetLayer
+              .property("Transform")
+              .property("Anchor Point")
+              .setValue([newAnchorX, newAnchorY]);
+          }
+        } catch (e_mid) {}
+
+        targetLayer
+          .property("Transform")
+          .property("Position")
+          .setValue([comp.width / 2, comp.height / 2]);
+
+        // Remove other layers
+        for (var d = 0; d < otherLayers.length; d++) {
+          otherLayers[d].remove();
+        }
+
+        groupsProcessed++;
+      }
+    } catch (e) {
+      alert("Error processing groups: " + e.toString());
+    } finally {
+      app.endUndoGroup();
+    }
+  };
+
   // --- Function to check for script updates from GitHub ---
   var checkForUpdates = function () {
     if (GITHUB_RAW_URL.indexOf("YOUR_USERNAME") > -1) {
@@ -2032,6 +2192,15 @@ if (typeof JSON !== "object") {
       saveSetting("Gemini_API_Key", this.text);
     };
 
+    // --- Language Code Input ---
+    var languageGroup = win.add("group");
+    languageGroup.orientation = "row";
+    languageGroup.add("statictext", undefined, "Language Code:");
+    languageInput = languageGroup.add("edittext", undefined, "");
+    languageInput.characters = 10;
+    languageInput.helpTip =
+      "Optional: Enter language code (e.g., 'en', 'es', 'fr') to skip auto-detection and speed up transcription.";
+
     // Try to load saved Language Code
     var savedLanguage = getSetting("Language_Code");
     if (savedLanguage) {
@@ -2041,35 +2210,6 @@ if (typeof JSON !== "object") {
     // Save Language Code when changed
     languageInput.onChange = function () {
       saveSetting("Language_Code", this.text);
-    };
-
-    // Try to load saved Transcription Level
-    var savedLevel = getSetting("Transcription_Level");
-    if (savedLevel === "sentence") {
-      transcriptionLevelDropdown.selection = 1;
-    } else {
-      transcriptionLevelDropdown.selection = 0;
-    }
-
-    // Save Transcription Level when changed
-    transcriptionLevelDropdown.onChange = function () {
-      saveSetting(
-        "Transcription_Level",
-        this.selection.index === 1 ? "sentence" : "word"
-      );
-    };
-
-    // Try to load saved Separate Text Layers setting
-    var savedSeparateLayers = getSetting("Separate_Text_Layers");
-    if (savedSeparateLayers === "true") {
-      separateTextLayersCheckbox.value = true;
-    } else {
-      separateTextLayersCheckbox.value = false;
-    }
-
-    // Save Separate Text Layers setting when changed
-    separateTextLayersCheckbox.onClick = function () {
-      saveSetting("Separate_Text_Layers", this.value.toString());
     };
 
     var stylePanel = win.add("panel", undefined, "Text Styling Options");
@@ -2222,6 +2362,16 @@ if (typeof JSON !== "object") {
     enableAnimationsCheckbox.helpTip =
       "When checked, each word layer will receive a small pop-in scale animation. Disabled by default.";
     enableAnimationsCheckbox.value = false;
+
+    // Checkbox to enable/disable fade-in animations
+    enableFadeAnimationsCheckbox = animsGroup.add(
+      "checkbox",
+      undefined,
+      "Fade-in"
+    );
+    enableFadeAnimationsCheckbox.helpTip =
+      "When checked, each word layer will fade in from 0% to 100% opacity. Disabled by default.";
+    enableFadeAnimationsCheckbox.value = false;
 
     stylePanel.add(
       "statictext",
@@ -2376,6 +2526,18 @@ if (typeof JSON !== "object") {
       arrangeWordsSideBySide();
     };
 
+    // --- New "Combine Groups by End Time" Button ---
+    var combineGroupsBtn = combinePanel.add(
+      "button",
+      undefined,
+      "Combine Groups by End Time"
+    );
+    combineGroupsBtn.helpTip =
+      "Smart Combine: Select ALL your text layers, and this will group them by their End Time (Out Point). Layers sharing the exact same end time will be combined into a single sentence layer.";
+    combineGroupsBtn.onClick = function () {
+      combineGroupsByEndTime();
+    };
+
     forceRtlCheckbox = combinePanel.add(
       "checkbox",
       undefined,
@@ -2443,6 +2605,23 @@ if (typeof JSON !== "object") {
         } catch (e_anim_restore) {
           // Ignore any errors restoring the checkbox state
         }
+      } else {
+        if (enableAnimationsCheckbox) enableAnimationsCheckbox.value = false;
+      }
+
+      // Restore fade animation checkbox state if present in preset
+      if (typeof settings.enableFadeAnimations !== "undefined") {
+        try {
+          if (enableFadeAnimationsCheckbox) {
+            enableFadeAnimationsCheckbox.value =
+              !!settings.enableFadeAnimations;
+          }
+        } catch (e_fade_restore) {
+          // Ignore
+        }
+      } else {
+        if (enableFadeAnimationsCheckbox)
+          enableFadeAnimationsCheckbox.value = false;
       }
       maxCharsInput.text = settings.maxChars || DEFAULT_MAX_CHARS_PER_LINE;
       maxWordsInput.text = settings.maxWords || DEFAULT_MAX_WORDS_PER_LINE;
@@ -2490,6 +2669,10 @@ if (typeof JSON !== "object") {
           // Persist animation checkbox state
           enableAnimations:
             enableAnimationsCheckbox && enableAnimationsCheckbox.value
+              ? true
+              : false,
+          enableFadeAnimations:
+            enableFadeAnimationsCheckbox && enableFadeAnimationsCheckbox.value
               ? true
               : false,
         };

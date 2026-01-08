@@ -36,6 +36,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
   - **Sentence Level Mode:** Creates one text layer per sentence for faster processing.
   - **Separate Text Layers Mode:** Combines the best of both - uses word-level timing with sentence-corrected text, automatically arranged side-by-side.
 - **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 2.0 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per sentence).
+- **Manual Language Selection:** Enter a language code (e.g., "en", "es") to skip auto-detection and speed up transcription.
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Customizable Styling:** Control font, size, fill color, stroke color, and stroke width for the generated text layers directly from the AE panel.
 - **Language Pre-definition:** Option to manually specify the language code (e.g., 'en', 'es') to skip auto-detection and speed up transcription.
@@ -241,12 +242,6 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
       - Splits long sentences into short, captionable chunks (max 9 words per sentence).
       - The API key is automatically saved in After Effects settings.
       - Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-
-    - **Language Code (Optional):**
-      - Enter a 2-letter language code (e.g., `en` for English, `es` for Spanish, `fr` for French) to predefine the language.
-      - **Benefit:** Skips the auto-detection step, making the transcription process faster.
-      - Leave empty to let WhisperX auto-detect the language.
-      - This setting is automatically saved between sessions.
 
 3.  Click the "**Select Audio File & Start Transcription**" button.
 
