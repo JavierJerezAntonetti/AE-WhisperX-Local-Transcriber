@@ -244,7 +244,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "3.0"; // Current version of the script
+  var SCRIPT_VERSION = "3.1"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
@@ -1844,6 +1844,139 @@ if (typeof JSON !== "object") {
     }
   };
 
+  // --- Function to Combine Groups of Words by Shared End Time ---
+  var combineGroupsByEndTime = function () {
+    app.beginUndoGroup("Combine Text Groups by End Time");
+    try {
+      var comp = app.project.activeItem;
+      if (!(comp instanceof CompItem)) {
+        alert("Please select or open a composition first.");
+        app.endUndoGroup();
+        return;
+      }
+
+      var selectedLayers = comp.selectedLayers;
+      var textLayers = [];
+      for (var i = 0; i < selectedLayers.length; i++) {
+        if (selectedLayers[i] instanceof TextLayer) {
+          textLayers.push(selectedLayers[i]);
+        }
+      }
+
+      if (textLayers.length === 0) {
+        alert("Please select text layers to combine.");
+        app.endUndoGroup();
+        return;
+      }
+
+      // Sort layers by inPoint (start time) to ensure correct word order
+      textLayers.sort(function (a, b) {
+        return a.inPoint - b.inPoint;
+      });
+
+      // Group layers by Out Point (End Time) with a small tolerance
+      var groups = [];
+      var TOLERANCE = 0.01; // 10ms tolerance
+
+      for (var i = 0; i < textLayers.length; i++) {
+        var layer = textLayers[i];
+        var outTime = layer.outPoint;
+        var foundGroup = false;
+
+        for (var g = 0; g < groups.length; g++) {
+          if (Math.abs(groups[g].outTime - outTime) < TOLERANCE) {
+            groups[g].layers.push(layer);
+            foundGroup = true;
+            break;
+          }
+        }
+
+        if (!foundGroup) {
+          groups.push({ outTime: outTime, layers: [layer] });
+        }
+      }
+
+      var groupsProcessed = 0;
+
+      for (var g = 0; g < groups.length; g++) {
+        var groupLayers = groups[g].layers;
+
+        // Only combine if there's more than one layer in the group
+        if (groupLayers.length < 2) continue;
+
+        // Double-check sorting within group by inPoint
+        groupLayers.sort(function (a, b) {
+          return a.inPoint - b.inPoint;
+        });
+
+        // The first layer (timeline-wise) becomes the container
+        var targetLayer = groupLayers[0];
+        var otherLayers = groupLayers.slice(1);
+
+        var combinedText = "";
+        for (var k = 0; k < groupLayers.length; k++) {
+          var layerVal = groupLayers[k].property("Source Text").value;
+          var txt = layerVal.text;
+          // Clean string slightly if needed
+          if (typeof txt === "string") txt = txt.trim();
+          else txt = String(txt).trim();
+
+          if (txt !== "") {
+            combinedText += (combinedText !== "" ? " " : "") + txt;
+          }
+        }
+
+        if (combinedText === "") continue;
+
+        try {
+          targetLayer.name =
+            "S_Comb_" +
+            combinedText.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 15);
+        } catch (e_name) {
+          targetLayer.name = "S_Combined";
+        }
+
+        // Update source text
+        var textProp = targetLayer.property("Source Text");
+        var textDoc = textProp.value;
+        textDoc.text = combinedText;
+        textProp.setValue(textDoc);
+
+        // Reset Anchor Point and Position (Center in Comp)
+        try {
+          var rect = targetLayer.sourceRectAtTime(
+            targetLayer.inPoint + 0.001,
+            false
+          );
+          if (rect) {
+            var newAnchorX = rect.left + rect.width / 2;
+            var newAnchorY = rect.top + rect.height / 2;
+            targetLayer
+              .property("Transform")
+              .property("Anchor Point")
+              .setValue([newAnchorX, newAnchorY]);
+          }
+        } catch (e_mid) {}
+
+        targetLayer
+          .property("Transform")
+          .property("Position")
+          .setValue([comp.width / 2, comp.height / 2]);
+
+        // Remove other layers
+        for (var d = 0; d < otherLayers.length; d++) {
+          otherLayers[d].remove();
+        }
+
+        groupsProcessed++;
+      }
+    } catch (e) {
+      alert("Error processing groups: " + e.toString());
+    } finally {
+      app.endUndoGroup();
+    }
+  };
+
   // --- Function to check for script updates from GitHub ---
   var checkForUpdates = function () {
     if (GITHUB_RAW_URL.indexOf("YOUR_USERNAME") > -1) {
@@ -2312,6 +2445,18 @@ if (typeof JSON !== "object") {
       "Arranges selected word layers into a paragraph, respecting the 'Max Chars/Line' and 'Max Words/Line' settings. Each line is centered.";
     arrangeBtn.onClick = function () {
       arrangeWordsSideBySide();
+    };
+
+    // --- New "Combine Groups by End Time" Button ---
+    var combineGroupsBtn = combinePanel.add(
+      "button",
+      undefined,
+      "Combine Groups by End Time"
+    );
+    combineGroupsBtn.helpTip =
+      "Smart Combine: Select ALL your text layers, and this will group them by their End Time (Out Point). Layers sharing the exact same end time will be combined into a single sentence layer.";
+    combineGroupsBtn.onClick = function () {
+      combineGroupsByEndTime();
     };
 
     forceRtlCheckbox = combinePanel.add(

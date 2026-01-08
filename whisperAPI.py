@@ -41,6 +41,7 @@ COMPUTE_TYPE = "int8"
 # Language is now auto-detected.
 
 BATCH_SIZE = 16  # Batch size for transcription
+CPU_THREADS = 4  # Number of CPU threads for WhisperX
 
 # --- Initialize Flask App ---
 app = Flask(__name__)
@@ -57,6 +58,7 @@ try:
         device=DEVICE,
         compute_type=COMPUTE_TYPE,
         language=None,  # Set to None for automatic language detection
+        threads=CPU_THREADS,
     )
     print(f"WhisperX Model {MODEL_SIZE} (Language: auto-detect) loaded successfully.")
 except Exception as e:
