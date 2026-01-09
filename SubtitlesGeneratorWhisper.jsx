@@ -383,6 +383,23 @@ if (typeof JSON !== "object") {
     }
   };
 
+  // --- Helper Function to Refresh Text Layer State ---
+  // This function forces After Effects to properly update a text layer's internal state
+  // after programmatic text changes, preventing the spurious "error" dialog that shows
+  // the text content when trying to manually edit the layer later.
+  var refreshTextLayerState = function (layer) {
+    try {
+      if (!layer || !(layer instanceof TextLayer)) return;
+      var wasSelected = layer.selected;
+      layer.selected = false;
+      // Small delay to allow AE to process the deselection
+      $.sleep(10);
+      layer.selected = wasSelected;
+    } catch (e_refresh) {
+      // Silently ignore refresh errors
+    }
+  };
+
   // --- Helper Function to Combine Word Timings with Sentence Text ---
   var combineSeparateTextLayers = function (wordData, sentenceData) {
     // This function creates a hybrid structure:
@@ -1818,6 +1835,9 @@ if (typeof JSON !== "object") {
       textDoc.text = combinedTextContent;
       textProp.setValue(textDoc);
 
+      // Refresh layer state to prevent AE focus error dialog
+      refreshTextLayerState(targetLayer);
+
       // Center anchor point and position based on new text content
       try {
         var rect = targetLayer.sourceRectAtTime(
@@ -2000,6 +2020,9 @@ if (typeof JSON !== "object") {
         var textDoc = textProp.value;
         textDoc.text = combinedText;
         textProp.setValue(textDoc);
+
+        // Refresh layer state to prevent AE focus error dialog
+        refreshTextLayerState(targetLayer);
 
         // Reset Anchor Point and Position (Center in Comp)
         try {
