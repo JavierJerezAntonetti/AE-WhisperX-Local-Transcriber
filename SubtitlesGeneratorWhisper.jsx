@@ -2193,6 +2193,19 @@ if (typeof JSON !== "object") {
     transcriptionLevelDropdown.helpTip =
       "Choose between word-by-word or sentence level transcription.";
 
+    // Try to load saved transcription level
+    var savedTranscriptionLevel = getSetting("Transcription_Level");
+    if (savedTranscriptionLevel) {
+      transcriptionLevelDropdown.selection =
+        savedTranscriptionLevel === "sentence" ? 1 : 0;
+    }
+
+    // Save transcription level when changed
+    transcriptionLevelDropdown.onChange = function () {
+      var level = this.selection.index === 0 ? "word" : "sentence";
+      saveSetting("Transcription_Level", level);
+    };
+
     // --- Separate Text Layers Checkbox ---
     var separateLayersGroup = win.add("group");
     separateLayersGroup.orientation = "row";
@@ -2204,6 +2217,17 @@ if (typeof JSON !== "object") {
     separateTextLayersCheckbox.value = false;
     separateTextLayersCheckbox.helpTip =
       "When checked with Sentence Level selected, creates individual word layers with word timings but uses sentence-level text. Automatically arranges words side-by-side.";
+
+    // Try to load saved separate text layers setting
+    var savedSeparateLayers = getSetting("Separate_Text_Layers");
+    if (savedSeparateLayers) {
+      separateTextLayersCheckbox.value = savedSeparateLayers === "true";
+    }
+
+    // Save separate text layers when changed
+    separateTextLayersCheckbox.onChange = function () {
+      saveSetting("Separate_Text_Layers", this.value ? "true" : "false");
+    };
 
     // --- Gemini API Key Input (for sentence splitting) ---
     var geminiApiKeyGroup = win.add("group");
@@ -2658,6 +2682,29 @@ if (typeof JSON !== "object") {
       }
       maxCharsInput.text = settings.maxChars || DEFAULT_MAX_CHARS_PER_LINE;
       maxWordsInput.text = settings.maxWords || DEFAULT_MAX_WORDS_PER_LINE;
+
+      // Restore transcription level
+      if (typeof settings.transcriptionLevel !== "undefined") {
+        try {
+          if (transcriptionLevelDropdown) {
+            transcriptionLevelDropdown.selection =
+              settings.transcriptionLevel === "sentence" ? 1 : 0;
+          }
+        } catch (e_transcription_restore) {
+          // Ignore any errors restoring the dropdown state
+        }
+      }
+
+      // Restore separate text layers checkbox
+      if (typeof settings.separateTextLayers !== "undefined") {
+        try {
+          if (separateTextLayersCheckbox) {
+            separateTextLayersCheckbox.value = !!settings.separateTextLayers;
+          }
+        } catch (e_separate_restore) {
+          // Ignore any errors restoring the checkbox state
+        }
+      }
     };
 
     var populatePresetDropdown = function () {
@@ -2706,6 +2753,18 @@ if (typeof JSON !== "object") {
               : false,
           enableFadeAnimations:
             enableFadeAnimationsCheckbox && enableFadeAnimationsCheckbox.value
+              ? true
+              : false,
+          // Persist transcription level
+          transcriptionLevel:
+            transcriptionLevelDropdown && transcriptionLevelDropdown.selection
+              ? transcriptionLevelDropdown.selection.index === 0
+                ? "word"
+                : "sentence"
+              : "word",
+          // Persist separate text layers checkbox
+          separateTextLayers:
+            separateTextLayersCheckbox && separateTextLayersCheckbox.value
               ? true
               : false,
         };
