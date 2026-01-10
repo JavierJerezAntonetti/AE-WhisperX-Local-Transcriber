@@ -2734,6 +2734,22 @@ if (typeof JSON !== "object") {
         } else {
           fontValue = fontNameInput.text;
         }
+        // Get transcription level
+        var selectedTranscriptionLevel = "word";
+        if (
+          transcriptionLevelDropdown &&
+          transcriptionLevelDropdown.selection
+        ) {
+          selectedTranscriptionLevel =
+            transcriptionLevelDropdown.selection.index === 0
+              ? "word"
+              : "sentence";
+        }
+        // Get separate text layers
+        var separateTextLayersValue =
+          separateTextLayersCheckbox && separateTextLayersCheckbox.value
+            ? true
+            : false;
         var settings = {
           fontName: fontValue,
           fontSize: fontSizeInput.text,
@@ -2756,17 +2772,9 @@ if (typeof JSON !== "object") {
               ? true
               : false,
           // Persist transcription level
-          transcriptionLevel:
-            transcriptionLevelDropdown && transcriptionLevelDropdown.selection
-              ? transcriptionLevelDropdown.selection.index === 0
-                ? "word"
-                : "sentence"
-              : "word",
+          transcriptionLevel: selectedTranscriptionLevel,
           // Persist separate text layers checkbox
-          separateTextLayers:
-            separateTextLayersCheckbox && separateTextLayersCheckbox.value
-              ? true
-              : false,
+          separateTextLayers: separateTextLayersValue,
         };
         savePreset(presetName, settings);
         populatePresetDropdown();
