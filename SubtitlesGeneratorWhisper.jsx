@@ -115,8 +115,8 @@ if (typeof JSON !== "object") {
             partial.length === 0
               ? "[]"
               : gap
-              ? "[\n" + gap + partial.join(",\n" + gap) + "\n" + mind + "]"
-              : "[" + partial.join(",") + "]";
+                ? "[\n" + gap + partial.join(",\n" + gap) + "\n" + mind + "]"
+                : "[" + partial.join(",") + "]";
           gap = mind;
           return v;
         }
@@ -147,8 +147,8 @@ if (typeof JSON !== "object") {
           partial.length === 0
             ? "{}"
             : gap
-            ? "{\n" + gap + partial.join(",\n" + gap) + "\n" + mind + "}"
-            : "{" + partial.join(",") + "}";
+              ? "{\n" + gap + partial.join(",\n" + gap) + "\n" + mind + "}"
+              : "{" + partial.join(",") + "}";
         gap = mind;
         return v;
     }
@@ -224,7 +224,7 @@ if (typeof JSON !== "object") {
 
       if (
         rx_one.test(
-          text.replace(rx_two, "@").replace(rx_three, "]").replace(rx_four, "")
+          text.replace(rx_two, "@").replace(rx_three, "]").replace(rx_four, ""),
         )
       ) {
         j = eval("(" + text + ")");
@@ -244,7 +244,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "3.3"; // Current version of the script
+  var SCRIPT_VERSION = "3.4"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
@@ -311,6 +311,8 @@ if (typeof JSON !== "object") {
   var PRESET_LIST_KEY = "PresetList";
   var LAST_PRESET_KEY = "LastUsedPreset";
   var PRESET_PREFIX = "Preset_";
+  var ENABLE_TEXT_ANIM_KEY = "EnableTextAnimations";
+  var ENABLE_FADE_ANIM_KEY = "EnableFadeAnimations";
 
   // --- Helper Function to sanitize file names ---
   var sanitizeFileName = function (name) {
@@ -483,7 +485,7 @@ if (typeof JSON !== "object") {
     transcriptionLevel,
     scriptTempFolder,
     geminiApiKey,
-    languageCode
+    languageCode,
   ) {
     var responseFilePath =
       scriptTempFolder.fsName +
@@ -526,7 +528,7 @@ if (typeof JSON !== "object") {
     try {
       if ($.os.indexOf("Windows") > -1) {
         systemCallResult = system.callSystem(
-          'cmd.exe /c "' + curlCommand + '"'
+          'cmd.exe /c "' + curlCommand + '"',
         );
       } else {
         systemCallResult = system.callSystem(curlCommand);
@@ -536,7 +538,7 @@ if (typeof JSON !== "object") {
         "Error calling system command (curl): " +
           e_curl_exec.toString() +
           "\nEnsure curl is installed and in your system PATH.\nCommand: " +
-          curlCommand
+          curlCommand,
       );
     }
 
@@ -553,7 +555,7 @@ if (typeof JSON !== "object") {
           WHISPER_API_URL +
           ".\n" +
           "Expected response file at: " +
-          responseFilePath
+          responseFilePath,
       );
     }
 
@@ -568,7 +570,7 @@ if (typeof JSON !== "object") {
       if (responseContent.length > 0 && responseContent.charAt(0) === "<") {
         throw new Error(
           "Received HTML instead of JSON. API server might have an error. Check server logs. Response starts with: " +
-            responseContent.substring(0, 200)
+            responseContent.substring(0, 200),
         );
       }
       transcriptionData = JSON.parse(responseContent);
@@ -578,7 +580,7 @@ if (typeof JSON !== "object") {
           e_json.toString() +
           "\nResponse content was:\n" +
           (responseContent.substring(0, 500) || "empty") +
-          (responseContent.length > 500 ? "..." : "")
+          (responseContent.length > 500 ? "..." : ""),
       );
     }
 
@@ -589,7 +591,7 @@ if (typeof JSON !== "object") {
   var runTranscriptionProcess = function (selectedAudioFile) {
     if (!selectedAudioFile || !selectedAudioFile.exists) {
       alert(
-        "Critical script error: Selected audio file is invalid. Please report this."
+        "Critical script error: Selected audio file is invalid. Please report this.",
       );
       return;
     }
@@ -601,7 +603,7 @@ if (typeof JSON !== "object") {
 
       if (!(comp instanceof CompItem)) {
         alert(
-          "Please select or open a composition first (for placing text layers)."
+          "Please select or open a composition first (for placing text layers).",
         );
         app.endUndoGroup();
         return;
@@ -621,7 +623,7 @@ if (typeof JSON !== "object") {
       if (isNaN(currentFontSize) || currentFontSize <= 0) {
         currentFontSize = DEFAULT_TEXT_FONT_SIZE;
         alert(
-          "Invalid Font Size input. Using default: " + DEFAULT_TEXT_FONT_SIZE
+          "Invalid Font Size input. Using default: " + DEFAULT_TEXT_FONT_SIZE,
         );
       }
 
@@ -642,7 +644,7 @@ if (typeof JSON !== "object") {
       ) {
         currentFillColor = DEFAULT_TEXT_FILL_COLOR;
         alert(
-          "Invalid Fill Color input (must be R,G,B between 0-1). Using default."
+          "Invalid Fill Color input (must be R,G,B between 0-1). Using default.",
         );
       } else {
         currentFillColor = [currentFillR, currentFillG, currentFillB];
@@ -653,7 +655,7 @@ if (typeof JSON !== "object") {
         currentStrokeWidth = DEFAULT_TEXT_STROKE_WIDTH;
         alert(
           "Invalid Stroke Width input. Using default: " +
-            DEFAULT_TEXT_STROKE_WIDTH
+            DEFAULT_TEXT_STROKE_WIDTH,
         );
       }
 
@@ -676,7 +678,7 @@ if (typeof JSON !== "object") {
         if (currentStrokeWidth > 0) {
           // Only alert if stroke is meant to be visible
           alert(
-            "Invalid Stroke Color input (must be R,G,B between 0-1). Using default."
+            "Invalid Stroke Color input (must be R,G,B between 0-1). Using default.",
           );
         }
       } else {
@@ -685,14 +687,14 @@ if (typeof JSON !== "object") {
       // --- End Get Styling Values ---
 
       var scriptTempFolder = new Folder(
-        TEMP_FOLDER_PATH + "/" + SCRIPT_TEMP_SUBFOLDER
+        TEMP_FOLDER_PATH + "/" + SCRIPT_TEMP_SUBFOLDER,
       );
 
       if (!scriptTempFolder.exists) {
         if (!scriptTempFolder.create()) {
           alert(
             "Error: Could not create temporary folder at: " +
-              scriptTempFolder.fsName
+              scriptTempFolder.fsName,
           );
           app.endUndoGroup();
           return;
@@ -702,7 +704,7 @@ if (typeof JSON !== "object") {
       var audioFile = selectedAudioFile;
       if (audioFile.length === 0) {
         alert(
-          "Warning: The selected audio file is empty. Transcription will likely fail."
+          "Warning: The selected audio file is empty. Transcription will likely fail.",
         );
       }
 
@@ -742,14 +744,14 @@ if (typeof JSON !== "object") {
             "word",
             scriptTempFolder,
             "",
-            languageCode
+            languageCode,
           );
           sentenceData = makeApiCall(
             audioFile,
             "sentence",
             scriptTempFolder,
             geminiApiKey,
-            languageCode
+            languageCode,
           );
         } else {
           // Normal mode: single API call
@@ -760,7 +762,7 @@ if (typeof JSON !== "object") {
             selectedTranscriptionLevel,
             scriptTempFolder,
             apiKeyToUse,
-            languageCode
+            languageCode,
           );
         }
       } catch (e_api) {
@@ -790,14 +792,14 @@ if (typeof JSON !== "object") {
         try {
           processedSegments = combineSeparateTextLayers(
             transcriptionData,
-            sentenceData
+            sentenceData,
           );
           isSeparateMode = true;
         } catch (e_combine) {
           processWarnings.push(
             "Error combining word and sentence data: " +
               e_combine.toString() +
-              ". Falling back to normal mode."
+              ". Falling back to normal mode.",
           );
           processedSegments = transcriptionData.segments;
         }
@@ -814,7 +816,7 @@ if (typeof JSON !== "object") {
 
         if (frameDuration <= 0) {
           alert(
-            "Error: Composition frame duration is invalid. Cannot set keyframes or ensure layer visibility accurately. Time offset cannot be applied."
+            "Error: Composition frame duration is invalid. Cannot set keyframes or ensure layer visibility accurately. Time offset cannot be applied.",
           );
         } else {
           timeOffset = 3 * frameDuration;
@@ -1008,7 +1010,7 @@ if (typeof JSON !== "object") {
                   typeof nextWordInSegmentData.start !== "undefined"
                 ) {
                   var nextWordOriginalApiStartTime = parseFloat(
-                    nextWordInSegmentData.start
+                    nextWordInSegmentData.start,
                   );
                   if (!isNaN(nextWordOriginalApiStartTime)) {
                     var nextWordAdjustedStartTime =
@@ -1031,7 +1033,7 @@ if (typeof JSON !== "object") {
                     typeof firstWordInNextSegmentData.start !== "undefined"
                   ) {
                     var nextSegmentFirstWordOriginalApiStartTime = parseFloat(
-                      firstWordInNextSegmentData.start
+                      firstWordInNextSegmentData.start,
                     );
                     if (!isNaN(nextSegmentFirstWordOriginalApiStartTime)) {
                       var nextSegmentFirstWordAdjustedStartTime =
@@ -1130,7 +1132,7 @@ if (typeof JSON !== "object") {
                     .property("Transform")
                     .property("Opacity");
                   var fadeTime1 = adjustedStartTime;
-                  var fadeTime2 = adjustedStartTime + 4 * frameDuration;
+                  var fadeTime2 = adjustedStartTime + 3 * frameDuration; // reduced by 25%
 
                   opacityProp.setValueAtTime(fadeTime1, 0);
                   if (fadeTime2 < textLayer.outPoint) {
@@ -1246,7 +1248,7 @@ if (typeof JSON !== "object") {
                     var currentLayer = lineLayers[j];
                     var rect = currentLayer.sourceRectAtTime(
                       currentLayer.inPoint + 0.001,
-                      false
+                      false,
                     );
                     totalLineWidth += rect.width;
                     if (j < lineLayers.length - 1) {
@@ -1267,7 +1269,7 @@ if (typeof JSON !== "object") {
                     var layer = lineLayers[j];
                     var rect = layer.sourceRectAtTime(
                       layer.inPoint + 0.001,
-                      false
+                      false,
                     );
 
                     var newX = useRtl
@@ -1303,7 +1305,7 @@ if (typeof JSON !== "object") {
             }
           } catch (e_arrange) {
             processWarnings.push(
-              "Error auto-arranging words: " + e_arrange.toString()
+              "Error auto-arranging words: " + e_arrange.toString(),
             );
           }
         }
@@ -1345,16 +1347,16 @@ if (typeof JSON !== "object") {
               var subtitlePrecompLayer = comp.layers.precompose(
                 layerIndices,
                 PRECOMP_NAME,
-                true
+                true,
               );
               if (!subtitlePrecompLayer) {
                 processWarnings.push(
-                  "Failed to pre-compose the subtitle layers."
+                  "Failed to pre-compose the subtitle layers.",
                 );
               }
             } catch (e_precomp) {
               processWarnings.push(
-                "Error during pre-composition: " + e_precomp.toString()
+                "Error during pre-composition: " + e_precomp.toString(),
               );
             }
           }
@@ -1390,12 +1392,12 @@ if (typeof JSON !== "object") {
       // Cleanup temporary response files
       try {
         var wordResponseFile = new File(
-          scriptTempFolder.fsName + "/word_" + TEMP_RESPONSE_FILENAME
+          scriptTempFolder.fsName + "/word_" + TEMP_RESPONSE_FILENAME,
         );
         if (wordResponseFile.exists) wordResponseFile.remove();
 
         var sentenceResponseFile = new File(
-          scriptTempFolder.fsName + "/sentence_" + TEMP_RESPONSE_FILENAME
+          scriptTempFolder.fsName + "/sentence_" + TEMP_RESPONSE_FILENAME,
         );
         if (sentenceResponseFile.exists) sentenceResponseFile.remove();
       } catch (e_cleanup) {
@@ -1420,7 +1422,7 @@ if (typeof JSON !== "object") {
           e_main.line +
           "\nIn file: " +
           e_main.fileName +
-          "\n\nPlease check the JavaScript Console for more details."
+          "\n\nPlease check the JavaScript Console for more details.",
       );
       try {
         app.endUndoGroup();
@@ -1440,7 +1442,7 @@ if (typeof JSON !== "object") {
       }
       if (!proj.file) {
         alert(
-          "Please save your project first. The audio will be rendered relative to the project file."
+          "Please save your project first. The audio will be rendered relative to the project file.",
         );
         app.endUndoGroup();
         return;
@@ -1455,13 +1457,13 @@ if (typeof JSON !== "object") {
 
       var projectPath = proj.file.path;
       var audioOutputFolder = new Folder(
-        projectPath + "/" + RENDERED_AUDIO_SUBFOLDER
+        projectPath + "/" + RENDERED_AUDIO_SUBFOLDER,
       );
       if (!audioOutputFolder.exists) {
         if (!audioOutputFolder.create()) {
           alert(
             "Error: Could not create audio output folder at: " +
-              audioOutputFolder.fsName
+              audioOutputFolder.fsName,
           );
           app.endUndoGroup();
           return;
@@ -1550,7 +1552,7 @@ if (typeof JSON !== "object") {
         alert(
           "Error during audio rendering: " +
             e_render.toString() +
-            "\nPlease check the Render Queue panel in After Effects."
+            "\nPlease check the Render Queue panel in After Effects.",
         );
       } finally {
         if (
@@ -1569,7 +1571,7 @@ if (typeof JSON !== "object") {
           e_render_main.line +
           "\nIn file: " +
           e_render_main.fileName +
-          "\n\nPlease check the JavaScript Console for more details."
+          "\n\nPlease check the JavaScript Console for more details.",
       );
       app.endUndoGroup();
     }
@@ -1680,7 +1682,7 @@ if (typeof JSON !== "object") {
           var currentLayer = lineLayers[j];
           var rect = currentLayer.sourceRectAtTime(
             currentLayer.inPoint + 0.001,
-            false
+            false,
           );
           totalLineWidth += rect.width;
           if (j < lineLayers.length - 1) {
@@ -1725,7 +1727,7 @@ if (typeof JSON !== "object") {
       }
     } catch (e) {
       alert(
-        "Error arranging text layers: " + e.toString() + "\nLine: " + e.line
+        "Error arranging text layers: " + e.toString() + "\nLine: " + e.line,
       );
     } finally {
       app.endUndoGroup();
@@ -1842,7 +1844,7 @@ if (typeof JSON !== "object") {
       try {
         var rect = targetLayer.sourceRectAtTime(
           targetLayer.inPoint + 0.001,
-          false
+          false,
         ); // Use a time slightly after inPoint
         if (rect && rect.width > 0 && rect.height > 0) {
           var newAnchorX = rect.left + rect.width / 2;
@@ -1872,7 +1874,7 @@ if (typeof JSON !== "object") {
       // ); // Removed success alert
     } catch (e) {
       alert(
-        "Error combining text layers: " + e.toString() + "\nLine: " + e.line
+        "Error combining text layers: " + e.toString() + "\nLine: " + e.line,
       );
     } finally {
       app.endUndoGroup();
@@ -2028,7 +2030,7 @@ if (typeof JSON !== "object") {
         try {
           var rect = targetLayer.sourceRectAtTime(
             targetLayer.inPoint + 0.001,
-            false
+            false,
           );
           if (rect) {
             var newAnchorX = rect.left + rect.width / 2;
@@ -2121,7 +2123,7 @@ if (typeof JSON !== "object") {
             "palette",
             "Whisper Transcriber & Audio Tools",
             undefined,
-            { resizeable: true, closeButton: true }
+            { resizeable: true, closeButton: true },
           );
 
     if (win === null) {
@@ -2160,7 +2162,7 @@ if (typeof JSON !== "object") {
     var renderAudioBtn = win.add(
       "button",
       undefined,
-      "Render Active Comp Audio (WAV)"
+      "Render Active Comp Audio (WAV)",
     );
     renderAudioBtn.helpTip =
       "Renders audio from the current active composition to a 'Rendered_Audio' subfolder in your project directory (as .wav).";
@@ -2173,7 +2175,7 @@ if (typeof JSON !== "object") {
     win.add(
       "statictext",
       undefined,
-      "2. Transcribe Audio to Text Layers:"
+      "2. Transcribe Audio to Text Layers:",
     ).alignment = "left";
 
     // --- Transcription Level Dropdown ---
@@ -2182,12 +2184,12 @@ if (typeof JSON !== "object") {
     transcriptionLevelGroup.add(
       "statictext",
       undefined,
-      "Transcription Level:"
+      "Transcription Level:",
     );
     transcriptionLevelDropdown = transcriptionLevelGroup.add(
       "dropdownlist",
       undefined,
-      ["Word-by-Word", "Sentence Level"]
+      ["Word-by-Word", "Sentence Level"],
     );
     transcriptionLevelDropdown.selection = 0; // Default to Word-by-Word
     transcriptionLevelDropdown.helpTip =
@@ -2212,7 +2214,7 @@ if (typeof JSON !== "object") {
     separateTextLayersCheckbox = separateLayersGroup.add(
       "checkbox",
       undefined,
-      "Separate Text Layers (Sentence + Word Timing)"
+      "Separate Text Layers (Sentence + Word Timing)",
     );
     separateTextLayersCheckbox.value = false;
     separateTextLayersCheckbox.helpTip =
@@ -2379,7 +2381,7 @@ if (typeof JSON !== "object") {
         fontNameInput = fontNameGroup.add(
           "edittext",
           undefined,
-          DEFAULT_TEXT_FONT_POSTSCRIPT_NAME
+          DEFAULT_TEXT_FONT_POSTSCRIPT_NAME,
         );
         fontNameInput.characters = 25;
         fontNameInput.helpTip =
@@ -2391,7 +2393,7 @@ if (typeof JSON !== "object") {
       fontNameInput = fontNameGroup.add(
         "edittext",
         undefined,
-        DEFAULT_TEXT_FONT_POSTSCRIPT_NAME
+        DEFAULT_TEXT_FONT_POSTSCRIPT_NAME,
       );
       fontNameInput.characters = 25;
       fontNameInput.helpTip =
@@ -2404,7 +2406,7 @@ if (typeof JSON !== "object") {
     fontSizeInput = fontSizeGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_FONT_SIZE.toString()
+      DEFAULT_TEXT_FONT_SIZE.toString(),
     );
     fontSizeInput.characters = 5;
 
@@ -2414,26 +2416,42 @@ if (typeof JSON !== "object") {
     enableAnimationsCheckbox = animsGroup.add(
       "checkbox",
       undefined,
-      "Enable Text Animations (Pop-in)"
+      "Enable Text Animations (Pop-in)",
     );
     enableAnimationsCheckbox.helpTip =
       "When checked, each word layer will receive a small pop-in scale animation. Disabled by default.";
-    enableAnimationsCheckbox.value = false;
+    var savedPopIn = getSetting(ENABLE_TEXT_ANIM_KEY);
+    enableAnimationsCheckbox.value =
+      savedPopIn !== null ? savedPopIn === "true" : false;
+    enableAnimationsCheckbox.onClick = function () {
+      saveSetting(
+        ENABLE_TEXT_ANIM_KEY,
+        enableAnimationsCheckbox.value ? "true" : "false",
+      );
+    };
 
     // Checkbox to enable/disable fade-in animations
     enableFadeAnimationsCheckbox = animsGroup.add(
       "checkbox",
       undefined,
-      "Fade-in"
+      "Fade-in",
     );
     enableFadeAnimationsCheckbox.helpTip =
       "When checked, each word layer will fade in from 0% to 100% opacity. Disabled by default.";
-    enableFadeAnimationsCheckbox.value = false;
+    var savedFade = getSetting(ENABLE_FADE_ANIM_KEY);
+    enableFadeAnimationsCheckbox.value =
+      savedFade !== null ? savedFade === "true" : false;
+    enableFadeAnimationsCheckbox.onClick = function () {
+      saveSetting(
+        ENABLE_FADE_ANIM_KEY,
+        enableFadeAnimationsCheckbox.value ? "true" : "false",
+      );
+    };
 
     stylePanel.add(
       "statictext",
       undefined,
-      "Fill Color (R,G,B values 0.0 - 1.0):"
+      "Fill Color (R,G,B values 0.0 - 1.0):",
     );
     var fillColorGroup = stylePanel.add("group");
     fillColorGroup.orientation = "row";
@@ -2441,21 +2459,21 @@ if (typeof JSON !== "object") {
     fillRInput = fillColorGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_FILL_COLOR[0].toString()
+      DEFAULT_TEXT_FILL_COLOR[0].toString(),
     );
     fillRInput.characters = 4;
     fillColorGroup.add("statictext", undefined, "G:");
     fillGInput = fillColorGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_FILL_COLOR[1].toString()
+      DEFAULT_TEXT_FILL_COLOR[1].toString(),
     );
     fillGInput.characters = 4;
     fillColorGroup.add("statictext", undefined, "B:");
     fillBInput = fillColorGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_FILL_COLOR[2].toString()
+      DEFAULT_TEXT_FILL_COLOR[2].toString(),
     );
     fillBInput.characters = 4;
 
@@ -2465,7 +2483,7 @@ if (typeof JSON !== "object") {
     strokeWidthInput = strokeWidthGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_STROKE_WIDTH.toString()
+      DEFAULT_TEXT_STROKE_WIDTH.toString(),
     );
     strokeWidthInput.characters = 5;
     strokeWidthInput.helpTip = "Set to 0 for no stroke.";
@@ -2473,7 +2491,7 @@ if (typeof JSON !== "object") {
     stylePanel.add(
       "statictext",
       undefined,
-      "Stroke Color (R,G,B values 0.0 - 1.0):"
+      "Stroke Color (R,G,B values 0.0 - 1.0):",
     );
     var strokeColorGroup = stylePanel.add("group");
     strokeColorGroup.orientation = "row";
@@ -2481,28 +2499,28 @@ if (typeof JSON !== "object") {
     strokeRInput = strokeColorGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_STROKE_COLOR[0].toString()
+      DEFAULT_TEXT_STROKE_COLOR[0].toString(),
     );
     strokeRInput.characters = 4;
     strokeColorGroup.add("statictext", undefined, "G:");
     strokeGInput = strokeColorGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_STROKE_COLOR[1].toString()
+      DEFAULT_TEXT_STROKE_COLOR[1].toString(),
     );
     strokeGInput.characters = 4;
     strokeColorGroup.add("statictext", undefined, "B:");
     strokeBInput = strokeColorGroup.add(
       "edittext",
       undefined,
-      DEFAULT_TEXT_STROKE_COLOR[2].toString()
+      DEFAULT_TEXT_STROKE_COLOR[2].toString(),
     );
     strokeBInput.characters = 4;
 
     var transcribeBtn = win.add(
       "button",
       undefined,
-      "Select Audio File & Start Transcription"
+      "Select Audio File & Start Transcription",
     );
     transcribeBtn.helpTip =
       "Prompts to select an audio file, calls WhisperX API, creates styled text layer per WORD (using settings above), and pre-comps them.";
@@ -2510,7 +2528,7 @@ if (typeof JSON !== "object") {
     transcribeBtn.onClick = function () {
       if (!app.project || !(app.project.activeItem instanceof CompItem)) {
         alert(
-          "Please open or select a composition first (this is where text layers will be added)."
+          "Please open or select a composition first (this is where text layers will be added).",
         );
         return;
       }
@@ -2519,7 +2537,7 @@ if (typeof JSON !== "object") {
       var selectedFile = File.openDialog(
         "Select your audio file for transcription",
         audioFileExtensions,
-        false
+        false,
       );
 
       if (selectedFile) {
@@ -2544,7 +2562,7 @@ if (typeof JSON !== "object") {
     maxCharsInput = maxCharsGroup.add(
       "edittext",
       undefined,
-      DEFAULT_MAX_CHARS_PER_LINE.toString()
+      DEFAULT_MAX_CHARS_PER_LINE.toString(),
     );
     maxCharsInput.characters = 4;
     maxCharsInput.helpTip = "Maximum characters per line for combined text.";
@@ -2555,7 +2573,7 @@ if (typeof JSON !== "object") {
     maxWordsInput = maxWordsGroup.add(
       "edittext",
       undefined,
-      DEFAULT_MAX_WORDS_PER_LINE.toString()
+      DEFAULT_MAX_WORDS_PER_LINE.toString(),
     );
     maxWordsInput.characters = 4;
     maxWordsInput.helpTip = "Maximum words per line for combined text.";
@@ -2563,7 +2581,7 @@ if (typeof JSON !== "object") {
     var combineBtn = combinePanel.add(
       "button",
       undefined,
-      "Combine Selected Text Layers"
+      "Combine Selected Text Layers",
     );
     combineBtn.helpTip =
       "Combines selected text layers into a single new layer, respecting character and word limits per line.";
@@ -2575,7 +2593,7 @@ if (typeof JSON !== "object") {
     var arrangeBtn = combinePanel.add(
       "button",
       undefined,
-      "Arrange Words Side-by-Side"
+      "Arrange Words Side-by-Side",
     );
     arrangeBtn.helpTip =
       "Arranges selected word layers into a paragraph, respecting the 'Max Chars/Line' and 'Max Words/Line' settings. Each line is centered.";
@@ -2587,7 +2605,7 @@ if (typeof JSON !== "object") {
     var combineGroupsBtn = combinePanel.add(
       "button",
       undefined,
-      "Combine Groups by End Time"
+      "Combine Groups by End Time",
     );
     combineGroupsBtn.helpTip =
       "Smart Combine: Select ALL your text layers, and this will group them by their End Time (Out Point). Layers sharing the exact same end time will be combined into a single sentence layer.";
@@ -2598,7 +2616,7 @@ if (typeof JSON !== "object") {
     forceRtlCheckbox = combinePanel.add(
       "checkbox",
       undefined,
-      "Force RTL Layout"
+      "Force RTL Layout",
     );
     forceRtlCheckbox.value = isRtlMode;
     forceRtlCheckbox.helpTip =
@@ -2796,7 +2814,7 @@ if (typeof JSON !== "object") {
           confirm(
             "Are you sure you want to delete the preset '" +
               presetNameToDelete +
-              "'?"
+              "'?",
           )
         ) {
           deletePreset(presetNameToDelete);
