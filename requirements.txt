@@ -4,8 +4,8 @@ werkzeug
 
 # WhisperX and its primary dependencies
 whisperx @ git+https://github.com/m-bain/whisperX.git@5012650d0f3d8966f3ea517762f952a624996d32
-torch
-torchaudio
+torch==2.5.1
+torchaudio==2.5.1
 faster_whisper
 
 # Dependencies for Voice Activity Detection (VAD) and other audio processing
@@ -17,3 +17,5 @@ scikit-learn
 
 # Optional: Google Generative AI for intelligent sentence splitting
 google-generativeai
+omegaconf==2.3
+setuptools<70.0.0
