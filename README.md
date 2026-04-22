@@ -35,7 +35,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
   - **Word-by-Word Mode:** Creates individual text layers for each word with precise timing (default).
   - **Sentence Level Mode:** Creates one text layer per sentence for faster processing.
   - **Separate Text Layers Mode:** Combines the best of both - uses word-level timing with sentence-corrected text, automatically arranged side-by-side.
-- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 3 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per segment).
+- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 3 Flash Preview to intelligently split long sentences into short, captionable chunks (max 9 words per segment).
 - **Manual Language Selection:** Enter a language code (e.g., "en", "es") to skip auto-detection and speed up transcription.
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Smart Persistence:** Your settings for Language Code, Transcription Level, Separate Text Layers mode, and Gemini API Key are automatically saved and restored between sessions.
@@ -65,7 +65,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
     - The AE script sends the audio file to the local API with your selected transcription mode.
     - The API transcribes the audio using WhisperX:
       - **Word-by-Word:** Performs word-level alignment and returns timed words.
-      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 3 Flash to split long sentences into shorter, captionable chunks (max 9 words each).
+      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 3 Flash Preview to split long sentences into shorter, captionable chunks (max 9 words each).
     - The AE script parses the JSON response:
       - Creates text layers (word-by-word or sentence-by-sentence based on mode).
       - Applies the configured styles and sets in/out points.
@@ -143,6 +143,7 @@ This method gives you more control and is necessary if you want to modify the AP
     - **Note:** The `google-generativeai` package is included for optional Gemini sentence splitting. If you don't plan to use this feature, you can skip installing it, but the API will gracefully handle its absence.
     - **Note on PyTorch:** If you have a compatible NVIDIA GPU and want to use CUDA for faster processing, you might need a specific PyTorch version. The `requirements.txt` installs the standard CPU version. Visit [PyTorch.org](https://pytorch.org/get-started/locally/) for instructions on installing with CUDA support. If you do, remember to change the `DEVICE` setting in `whisperAPI.py` to `"cuda"`.
 4.  **Run the API:**
+
     ```bash
     python whisperAPI.py
     ```
@@ -150,6 +151,7 @@ This method gives you more control and is necessary if you want to modify the AP
     - A console window will appear. The first time you run it, it will download the WhisperX model files. This may take some time and requires an internet connection.
     - You should see messages indicating the model is loading and the Flask server is starting (e.g., `Starting Flask server on host 127.0.0.1, port 5000`).
     - **Keep this console window open while you are using the After Effects script.**
+
 5.  **Proceed to [After Effects Script Setup](#after-effects-script-setup).**
 
 ---

@@ -34,6 +34,9 @@ ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "ogg", "flac", "aac", "opus"}
 # --- Configuration ---
 # WhisperX model identifier (e.g., "large-v3", "large-v2", "medium", "base", etc.)
 MODEL_SIZE = "large-v3"
+# Gemini model used for sentence splitting.
+GEMINI_MODEL_NAME = "gemini-3-flash-preview"
+GEMINI_MODEL_LABEL = "Gemini 3 Flash Preview"
 # DEVICE: "cpu" or "cuda" if you have a GPU and compatible PyTorch/WhisperX installed
 DEVICE = "cpu"
 # COMPUTE_TYPE: "int8" for CPU. For GPU, "float16" or "bfloat16" (if supported) are common.
@@ -95,15 +98,12 @@ def _call_gemini_split(text, detected_language, gemini_api_key):
     """
     try:
         try:
-            model = genai.GenerativeModel("gemini-3-flash")
+            model = genai.GenerativeModel(GEMINI_MODEL_NAME)
         except Exception:
             try:
                 model = genai.GenerativeModel("gemini-2.5-flash")
             except Exception:
-                try:
-                    model = genai.GenerativeModel("gemini-2.0-flash")
-                except Exception:
-                    model = genai.GenerativeModel("gemini-1.5-flash")
+                model = genai.GenerativeModel("gemini-2.0-flash")
 
         language_name = (
             detected_language.upper() if detected_language else "the detected language"
@@ -225,7 +225,7 @@ Return the JSON array of segments:"""
 
 def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
     """
-    Use Gemini 2.0 Flash to intelligently split long segments.
+    Use Gemini 3 Flash Preview to intelligently split long segments.
     Processes in chunks to avoid token limits.
     """
     if not GEMINI_AVAILABLE:
@@ -246,7 +246,7 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
         return segments
 
     try:
-        print("Using Gemini 2.0 Flash to split segments (with chunking)...")
+        print(f"Using {GEMINI_MODEL_LABEL} to split segments (with chunking)...")
 
         # 1. Chunk segments by duration (e.g. 120 seconds per chunk)
         CHUNK_DURATION_SECONDS = 120
@@ -487,7 +487,7 @@ def transcribe_audio():
                 # Use Gemini to intelligently split long segments into shorter sentences
                 if gemini_api_key:
                     print(
-                        "Using Gemini 2.0 Flash to split segments into captionable sentences..."
+                        f"Using {GEMINI_MODEL_LABEL} to split segments into captionable sentences..."
                     )
                     final_segments = split_segments_with_gemini(
                         final_segments, gemini_api_key, detected_language
