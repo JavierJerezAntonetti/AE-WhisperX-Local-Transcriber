@@ -35,7 +35,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
   - **Word-by-Word Mode:** Creates individual text layers for each word with precise timing (default).
   - **Sentence Level Mode:** Creates one text layer per sentence for faster processing.
   - **Separate Text Layers Mode:** Combines the best of both - uses word-level timing with sentence-corrected text, automatically arranged side-by-side.
-- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 2.0 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per sentence).
+- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 2.5 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per segment).
 - **Manual Language Selection:** Enter a language code (e.g., "en", "es") to skip auto-detection and speed up transcription.
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Smart Persistence:** Your settings for Language Code, Transcription Level, Separate Text Layers mode, and Gemini API Key are automatically saved and restored between sessions.
@@ -65,7 +65,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
     - The AE script sends the audio file to the local API with your selected transcription mode.
     - The API transcribes the audio using WhisperX:
       - **Word-by-Word:** Performs word-level alignment and returns timed words.
-      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 2.0 Flash to split long sentences into shorter, captionable chunks (max 9 words each).
+      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 2.5 Flash to split long sentences into shorter, captionable chunks (max 9 words each).
     - The AE script parses the JSON response:
       - Creates text layers (word-by-word or sentence-by-sentence based on mode).
       - Applies the configured styles and sets in/out points.

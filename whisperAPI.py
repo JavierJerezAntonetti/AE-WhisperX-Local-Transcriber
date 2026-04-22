@@ -95,10 +95,10 @@ def _call_gemini_split(text, detected_language, gemini_api_key):
     """
     try:
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
         except Exception:
             try:
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                model = genai.GenerativeModel("gemini-2.0-flash")
             except Exception:
                 model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -109,7 +109,7 @@ def _call_gemini_split(text, detected_language, gemini_api_key):
         prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
 
 CRITICAL RULES:
-    1. LENGTH CONSTRAINT: Maximum 9 words per segment, keep it natural.
+    1. LENGTH CONSTRAINT: Maximum around 9 words per segment, keep it natural, but you can go up to 12 words if it maintains readability and flow. Avoid very short segments (1-2 words) unless they are natural pauses or standalone phrases.
     2. GRAMMATICAL GLUE (High Priority):
       - NEVER separate a pronoun from its verb (e.g., keep "se merece", "te quiero", "it is" together).
       - NEVER separate a preposition from its noun (e.g., keep "con [Name]", "in the house", "para ti" together).
