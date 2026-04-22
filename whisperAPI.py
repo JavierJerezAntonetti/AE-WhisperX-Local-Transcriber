@@ -95,12 +95,15 @@ def _call_gemini_split(text, detected_language, gemini_api_key):
     """
     try:
         try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel("gemini-3-flash")
         except Exception:
             try:
-                model = genai.GenerativeModel("gemini-2.0-flash")
+                model = genai.GenerativeModel("gemini-2.5-flash")
             except Exception:
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                try:
+                    model = genai.GenerativeModel("gemini-2.0-flash")
+                except Exception:
+                    model = genai.GenerativeModel("gemini-1.5-flash")
 
         language_name = (
             detected_language.upper() if detected_language else "the detected language"

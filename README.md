@@ -35,7 +35,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
   - **Word-by-Word Mode:** Creates individual text layers for each word with precise timing (default).
   - **Sentence Level Mode:** Creates one text layer per sentence for faster processing.
   - **Separate Text Layers Mode:** Combines the best of both - uses word-level timing with sentence-corrected text, automatically arranged side-by-side.
-- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 2.5 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per segment).
+- **AI-Powered Sentence Splitting:** Optional integration with Google Gemini 3 Flash to intelligently split long sentences into short, captionable chunks (max 9 words per segment).
 - **Manual Language Selection:** Enter a language code (e.g., "en", "es") to skip auto-detection and speed up transcription.
 - **After Effects Integration:** Dockable ScriptUI panel for a seamless experience.
 - **Smart Persistence:** Your settings for Language Code, Transcription Level, Separate Text Layers mode, and Gemini API Key are automatically saved and restored between sessions.
@@ -65,7 +65,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
     - The AE script sends the audio file to the local API with your selected transcription mode.
     - The API transcribes the audio using WhisperX:
       - **Word-by-Word:** Performs word-level alignment and returns timed words.
-      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 2.5 Flash to split long sentences into shorter, captionable chunks (max 9 words each).
+      - **Sentence Level:** Returns sentence-level segments. If a Gemini API key is provided, uses Gemini 3 Flash to split long sentences into shorter, captionable chunks (max 9 words each).
     - The AE script parses the JSON response:
       - Creates text layers (word-by-word or sentence-by-sentence based on mode).
       - Applies the configured styles and sets in/out points.
@@ -146,6 +146,7 @@ This method gives you more control and is necessary if you want to modify the AP
     ```bash
     python whisperAPI.py
     ```
+
     - A console window will appear. The first time you run it, it will download the WhisperX model files. This may take some time and requires an internet connection.
     - You should see messages indicating the model is loading and the Flask server is starting (e.g., `Starting Flask server on host 127.0.0.1, port 5000`).
     - **Keep this console window open while you are using the After Effects script.**
@@ -180,7 +181,6 @@ If your audio is part of your After Effects composition and you want to transcri
 - **IMPORTANT:** For this button to work reliably, you must first create an **Output Module Template** in After Effects for rendering WAV audio. You only need to do this once.
 
 - **How to Create the WAV Template:**
-
   1.  Go to `Edit > Templates > Output Modules...`.
   2.  In the Output Module Templates dialog, click **New...**.
   3.  Set the **Format** to **WAV**.
@@ -217,14 +217,11 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
 1.  Ensure your chosen composition is active (this is where the text layers will be created).
 
 2.  **Choose Your Transcription Mode:**
-
     - **Transcription Level Dropdown:**
-
       - **Word-by-Word (Default):** Creates individual text layers for each word with precise timing. Best for kinetic typography and word-by-word animations.
       - **Sentence Level:** Creates one text layer per sentence. Faster processing, ideal for subtitle workflows. Optionally use Gemini for intelligent sentence splitting.
 
     - **Separate Text Layers Checkbox:**
-
       - Only available when "Sentence Level" is selected.
       - When checked, makes two API calls (word + sentence) and combines them:
         - Uses word-level timing for precise appearance of each word.
@@ -233,7 +230,6 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
         - Perfect for creating word-by-word animations with correct sentence structure.
 
     - **Gemini API Key (Optional):**
-
       - Enter your Google Gemini API key to enable intelligent sentence splitting.
       - Only used when "Sentence Level" is selected.
       - Splits long sentences into short, captionable chunks (max 9 words per sentence).
@@ -247,7 +243,6 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
 5.  The script sends the audio to the local WhisperX API with your selected mode.
 
 6.  **Processing:**
-
     - The process runs silently without interrupting alerts.
     - For "Separate Text Layers" mode, two API calls are made automatically.
     - If a Gemini API key is provided with Sentence Level, sentences are intelligently split.
@@ -278,13 +273,11 @@ After generating text layers, you can use the utilities to format them into para
 **Note:** If you used "Separate Text Layers" mode, words are already automatically arranged side-by-side. You can still use these utilities to rearrange or combine layers if needed.
 
 - **Configuration:**
-
   - **Max Chars/Line:** The maximum number of characters allowed on a single line before forcing a line break.
   - **Max Words/Line:** The maximum number of words allowed on a single line.
   - **Force RTL Layout:** A checkbox to manually enable Right-to-Left layout for the **Arrange Words Side-by-Side** function. This is automatically checked if an RTL language (e.g., Arabic, Hebrew) is detected during transcription, but can be toggled manually.
 
 - **Arrange Words Side-by-Side:**
-
   1.  In your composition (likely inside the "Subtitles" pre-comp), **select the word layers** you want to arrange.
   2.  Set your desired character and word limits in the panel.
   3.  Click "**Arrange Words Side-by-Side**".
