@@ -2238,7 +2238,7 @@ if (typeof JSON !== "object") {
     geminiApiKeyInput = geminiApiKeyGroup.add("edittext", undefined, "");
     geminiApiKeyInput.characters = 60;
     geminiApiKeyInput.helpTip =
-      "Optional: Enter your Gemini API key to use Gemini 3 Flash Preview for intelligent sentence splitting (max 9 words per sentence). Only used when Transcription Level is set to 'Sentence Level'. Leave empty to use original segments.";
+      "Optional: Enter your Gemini API key to use Gemini 2.5 Flash for intelligent sentence splitting (max 9 words per sentence). Only used when Transcription Level is set to 'Sentence Level'. Leave empty to use original segments.";
 
     // --- Language Input ---
     var languageGroup = win.add("group");

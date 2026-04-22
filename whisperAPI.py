@@ -35,8 +35,8 @@ ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "ogg", "flac", "aac", "opus"}
 # WhisperX model identifier (e.g., "large-v3", "large-v2", "medium", "base", etc.)
 MODEL_SIZE = "large-v3"
 # Gemini model used for sentence splitting.
-GEMINI_MODEL_NAME = "gemini-3-flash-preview"
-GEMINI_MODEL_LABEL = "Gemini 3 Flash Preview"
+GEMINI_MODEL_NAME = "gemini-2.5-flash"
+GEMINI_MODEL_LABEL = "Gemini 2.5 Flash"
 # DEVICE: "cpu" or "cuda" if you have a GPU and compatible PyTorch/WhisperX installed
 DEVICE = "cpu"
 # COMPUTE_TYPE: "int8" for CPU. For GPU, "float16" or "bfloat16" (if supported) are common.
@@ -225,7 +225,7 @@ Return the JSON array of segments:"""
 
 def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
     """
-    Use Gemini 3 Flash Preview to intelligently split long segments.
+    Use Gemini 2.5 Flash to intelligently split long segments.
     Processes in chunks to avoid token limits.
     """
     if not GEMINI_AVAILABLE:
