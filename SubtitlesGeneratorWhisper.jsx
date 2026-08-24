@@ -1,3 +1,31 @@
+// --- ExtendScript (ES3) Polyfills ---
+if (typeof String.prototype.trim !== "function") {
+  String.prototype.trim = function () {
+    return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, "");
+  };
+}
+
+if (typeof Array.prototype.indexOf !== "function") {
+  Array.prototype.indexOf = function (searchElement, fromIndex) {
+    var k;
+    if (this == null) {
+      throw new TypeError('"this" is null or not defined');
+    }
+    var o = Object(this);
+    var len = o.length >>> 0;
+    if (len === 0) return -1;
+    var n = fromIndex | 0;
+    if (Math.abs(n) === Infinity) n = 0;
+    if (n >= len) return -1;
+    k = Math.max(n >= 0 ? n : len - Math.abs(n), 0);
+    while (k < len) {
+      if (k in o && o[k] === searchElement) return k;
+      k++;
+    }
+    return -1;
+  };
+}
+
 if (typeof JSON !== "object") {
   JSON = {};
 }
@@ -244,7 +272,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "3.4"; // Current version of the script
+  var SCRIPT_VERSION = "3.5"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
