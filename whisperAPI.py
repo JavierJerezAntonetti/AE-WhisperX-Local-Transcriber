@@ -25,6 +25,8 @@ for _logger_name in [
     "pyannote",
     "speechbrain",
     "werkzeug",
+    "google_genai",
+    "google_genai.models",
 ]:
     _l = logging.getLogger(_logger_name)
     _l.setLevel(logging.ERROR)
@@ -209,6 +211,9 @@ Return the JSON array of segments:"""
                         temperature=0.2,
                         max_output_tokens=8192,
                         response_mime_type="application/json",
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        ),
                     ),
                 )
             except Exception:
@@ -218,6 +223,9 @@ Return the JSON array of segments:"""
                     config=types.GenerateContentConfig(
                         temperature=0.2,
                         max_output_tokens=8192,
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=True
+                        ),
                     ),
                 )
             response_text = response.text.strip() if response.text else ""
