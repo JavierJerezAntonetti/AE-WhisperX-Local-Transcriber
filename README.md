@@ -2,7 +2,7 @@
 
 Transcribe audio directly within Adobe After Effects using a local WhisperX API. This tool creates styled, word-level text layers from your audio, enabling precise subtitle and kinetic typography workflows. It also includes utilities for arranging and combining the generated text layers.
 
-![Panel Screenshot](https://github.com/user-attachments/assets/0a93e050-333d-494b-8968-2d292b0a3454)
+![Panel Screenshot](https://github.com/user-attachments/assets/758d627d-f3f9-4037-bd39-cb1cc3a15207)
 
 ## Table of Contents
 
