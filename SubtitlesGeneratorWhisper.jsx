@@ -279,6 +279,30 @@ if (typeof JSON !== "object") {
   // Name of the script shown in update messages
   var SCRIPT_NAME = "AE Whisper X Local Transcriber";
 
+  // Helper to compare version strings (returns true only if remoteVersion > localVersion)
+  function isVersionHigher(remoteVer, localVer) {
+    if (!remoteVer || !localVer) return false;
+    var cleanRemote = String(remoteVer).replace(/^[vV]/, "").replace(/^\s+|\s+$/g, "");
+    var cleanLocal = String(localVer).replace(/^[vV]/, "").replace(/^\s+|\s+$/g, "");
+    var partsRemote = cleanRemote.split(".");
+    var partsLocal = cleanLocal.split(".");
+    var maxLen = Math.max(partsRemote.length, partsLocal.length);
+
+    for (var i = 0; i < maxLen; i++) {
+      var numRemote = i < partsRemote.length ? parseInt(partsRemote[i], 10) : 0;
+      var numLocal = i < partsLocal.length ? parseInt(partsLocal[i], 10) : 0;
+      if (isNaN(numRemote)) numRemote = 0;
+      if (isNaN(numLocal)) numLocal = 0;
+
+      if (numRemote > numLocal) {
+        return true;
+      } else if (numRemote < numLocal) {
+        return false;
+      }
+    }
+    return false;
+  }
+
   // Helper to build the "new version available" message including the script name
   function getNewVersionMessage(remoteVersion) {
     return (
@@ -2124,7 +2148,7 @@ if (typeof JSON !== "object") {
 
         if (match && match[1]) {
           var remoteVersion = match[1];
-          if (remoteVersion !== SCRIPT_VERSION) {
+          if (isVersionHigher(remoteVersion, SCRIPT_VERSION)) {
             alert(getNewVersionMessage(remoteVersion));
           }
         }
