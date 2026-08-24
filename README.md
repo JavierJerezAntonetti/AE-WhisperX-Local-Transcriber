@@ -140,7 +140,7 @@ This method gives you more control and is necessary if you want to modify the AP
       ```bash
       pip install -r requirements.txt
       ```
-    - **Note:** The `google-generativeai` package is included for optional Gemini sentence splitting. If you don't plan to use this feature, you can skip installing it, but the API will gracefully handle its absence.
+    - **Note:** The `google-genai` package is included for optional Gemini sentence splitting. If you don't plan to use this feature, you can skip installing it, but the API will gracefully handle its absence.
     - **Note on PyTorch:** If you have a compatible NVIDIA GPU and want to use CUDA for faster processing, you might need a specific PyTorch version. The `requirements.txt` installs the standard CPU version. Visit [PyTorch.org](https://pytorch.org/get-started/locally/) for instructions on installing with CUDA support. If you do, remember to change the `DEVICE` setting in `whisperAPI.py` to `"cuda"`.
 4.  **Run the API:**
 
@@ -327,7 +327,7 @@ If you change these settings, the API might need to download new model files on 
   - Clear audio quality is crucial. Background noise or unclear speech can affect accuracy.
 - **Gemini Sentence Splitting Not Working:**
   - Ensure you've entered a valid Gemini API key in the panel.
-  - Verify `google-generativeai` is installed if running from source: `pip install google-generativeai`
+  - Verify `google-genai` is installed if running from source: `pip install google-genai`
   - Check the API console for Gemini-related error messages.
   - If Gemini fails, the API will fall back to using original segments automatically.
 - **Separate Text Layers Mode Issues:**

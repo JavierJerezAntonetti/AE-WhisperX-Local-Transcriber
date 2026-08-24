@@ -2,22 +2,83 @@ import os
 import tempfile
 import time  # For timing operations
 import sys  # For sys.frozen and sys._MEIPASS
+import json
+import warnings
+import logging
+
+# --- Configure Warnings and Logging to Suppress False-Alarm Framework Notices ---
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*weights_only.*")
+warnings.filterwarnings("ignore", message=".*Model was trained with.*")
+warnings.filterwarnings("ignore", message=".*Bad things.*")
+warnings.filterwarnings("ignore", message=".*automatically upgraded your loaded checkpoint.*")
+
+for _logger_name in [
+    "pytorch_lightning",
+    "lightning_fabric",
+    "lightning",
+    "lightning.fabric",
+    "lightning.pytorch",
+    "lightning.pytorch.utilities.migration.utils",
+    "pytorch_lightning.utilities.migration.utils",
+    "pyannote",
+    "speechbrain",
+    "werkzeug",
+]:
+    _l = logging.getLogger(_logger_name)
+    _l.setLevel(logging.ERROR)
+    _l.propagate = False
+
+# Patch pyannote's version check print false-alarms
+try:
+    import pyannote.audio.core.model
+    import pyannote.audio.core.pipeline
+    import pyannote.audio.core.inference
+    import pyannote.audio.utils.version
+
+    pyannote.audio.core.model.check_version = lambda *a, **kw: None
+    pyannote.audio.core.pipeline.check_version = lambda *a, **kw: None
+    pyannote.audio.core.inference.check_version = lambda *a, **kw: None
+    pyannote.audio.utils.version.check_version = lambda *a, **kw: None
+except Exception:
+    pass
+
 from flask import Flask, request, jsonify
 import whisperx
 from werkzeug.utils import secure_filename
-import json
 
-# Try to import Google Generative AI - will fail gracefully if not installed
+# Try importing waitress for production WSGI serving (avoids Flask dev server warnings)
 try:
-    import google.generativeai as genai
+    from waitress import serve
+    USE_WAITRESS = True
+except ImportError:
+    USE_WAITRESS = False
+
+# Try to import Google GenAI (new official SDK) or fallback gracefully to legacy google.generativeai
+GEMINI_SDK_TYPE = None
+GEMINI_AVAILABLE = False
+try:
+    from google import genai
+    from google.genai import types
 
     GEMINI_AVAILABLE = True
+    GEMINI_SDK_TYPE = "genai"
 except ImportError:
-    GEMINI_AVAILABLE = False
-    print(
-        "Warning: Google Generative AI library not installed. Gemini sentence splitting will not be available."
-    )
-    print("Install with: pip install google-generativeai")
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            import google.generativeai as legacy_genai
+
+        GEMINI_AVAILABLE = True
+        GEMINI_SDK_TYPE = "legacy"
+    except ImportError:
+        GEMINI_AVAILABLE = False
+        GEMINI_SDK_TYPE = None
+        print(
+            "Warning: Google GenAI library not installed. Gemini sentence splitting will not be available."
+        )
+        print("Install with: pip install google-genai")
 
 # --- Determine the script's directory (especially for PyInstaller) ---
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -96,6 +157,9 @@ def _call_gemini_split(text, detected_language, gemini_api_key):
     """
     Helper function to call Gemini 3.6 Flash and return a list of sentence strings.
     """
+    if not GEMINI_AVAILABLE or not GEMINI_SDK_TYPE:
+        return None
+
     language_name = (
         detected_language.upper() if detected_language else "the detected language"
     )
@@ -133,28 +197,51 @@ Transcription text (in {language_name}):
 
 Return the JSON array of segments:"""
 
-    generation_config = {
-        "temperature": 0.2,
-        "max_output_tokens": 8192,
-    }
-
     try:
-        model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-        try:
-            config_with_json = generation_config.copy()
-            config_with_json["response_mime_type"] = "application/json"
-            response = model.generate_content(
-                prompt, generation_config=config_with_json
-            )
-        except Exception:
-            print(
-                "Note: JSON MIME type enforcement not supported/failed, falling back to standard text generation."
-            )
-            response = model.generate_content(
-                prompt, generation_config=generation_config
-            )
-
-        response_text = response.text.strip()
+        response_text = ""
+        if GEMINI_SDK_TYPE == "genai":
+            client = genai.Client(api_key=gemini_api_key)
+            try:
+                response = client.models.generate_content(
+                    model=GEMINI_MODEL_NAME,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        max_output_tokens=8192,
+                        response_mime_type="application/json",
+                    ),
+                )
+            except Exception:
+                response = client.models.generate_content(
+                    model=GEMINI_MODEL_NAME,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        max_output_tokens=8192,
+                    ),
+                )
+            response_text = response.text.strip() if response.text else ""
+        elif GEMINI_SDK_TYPE == "legacy":
+            legacy_genai.configure(api_key=gemini_api_key)
+            model = legacy_genai.GenerativeModel(GEMINI_MODEL_NAME)
+            generation_config = {
+                "temperature": 0.2,
+                "max_output_tokens": 8192,
+            }
+            try:
+                config_with_json = generation_config.copy()
+                config_with_json["response_mime_type"] = "application/json"
+                response = model.generate_content(
+                    prompt, generation_config=config_with_json
+                )
+            except Exception:
+                print(
+                    "Note: JSON MIME type enforcement not supported/failed, falling back to standard text generation."
+                )
+                response = model.generate_content(
+                    prompt, generation_config=generation_config
+                )
+            response_text = response.text.strip() if response.text else ""
 
         # Robust JSON Parsing
         cleaned_text = response_text
@@ -222,18 +309,19 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
     Processes in chunks to avoid token limits.
     """
     if not GEMINI_AVAILABLE:
-        print("Google Generative AI library not available. Returning segments as-is.")
+        print("Google GenAI library not available. Returning segments as-is.")
         return segments
 
     if not gemini_api_key:
         print("No Gemini API key provided. Returning segments as-is.")
         return segments
 
-    try:
-        genai.configure(api_key=gemini_api_key)
-    except Exception as e:
-        print(f"Error configuring Gemini API: {e}")
-        return segments
+    if GEMINI_SDK_TYPE == "legacy":
+        try:
+            legacy_genai.configure(api_key=gemini_api_key)
+        except Exception as e:
+            print(f"Error configuring Gemini API: {e}")
+            return segments
 
     if not segments:
         return segments
@@ -581,6 +669,9 @@ if __name__ == "__main__":
             )
             # sys.exit(1)
 
-    print("Starting Flask server on host 127.0.0.1, port 5000")
+    print("Starting API server on host 127.0.0.1, port 5000")
     print(f"Uploads will be temporarily stored in: {UPLOAD_FOLDER}")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    if USE_WAITRESS:
+        serve(app, host="127.0.0.1", port=5000)
+    else:
+        app.run(host="127.0.0.1", port=5000, debug=False)
