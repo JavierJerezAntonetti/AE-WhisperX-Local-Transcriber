@@ -35,8 +35,8 @@ ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "ogg", "flac", "aac", "opus"}
 # WhisperX model identifier (e.g., "large-v3", "large-v2", "medium", "base", etc.)
 MODEL_SIZE = "large-v3"
 # Gemini model used for sentence splitting.
-GEMINI_MODEL_NAME = "gemini-2.5-flash"
-GEMINI_MODEL_LABEL = "Gemini 2.5 Flash"
+GEMINI_MODEL_NAME = "gemini-3.6-flash"
+GEMINI_MODEL_LABEL = "Gemini 3.6 Flash"
 # DEVICE: "cpu" or "cuda" if you have a GPU and compatible PyTorch/WhisperX installed
 DEVICE = "cpu"
 # COMPUTE_TYPE: "int8" for CPU. For GPU, "float16" or "bfloat16" (if supported) are common.
@@ -94,22 +94,13 @@ def allowed_file(filename):
 
 def _call_gemini_split(text, detected_language, gemini_api_key):
     """
-    Helper function to call Gemini and return a list of sentence strings.
+    Helper function to call Gemini 3.6 Flash and return a list of sentence strings.
     """
-    try:
-        try:
-            model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-        except Exception:
-            try:
-                model = genai.GenerativeModel("gemini-2.5-flash")
-            except Exception:
-                model = genai.GenerativeModel("gemini-2.0-flash")
+    language_name = (
+        detected_language.upper() if detected_language else "the detected language"
+    )
 
-        language_name = (
-            detected_language.upper() if detected_language else "the detected language"
-        )
-
-        prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
+    prompt = f"""You are a professional subtitle editor. Your task is to split the following transcription text into short, readable, captionable segments suitable for video subtitles.
 
 CRITICAL RULES:
     1. LENGTH CONSTRAINT: Maximum around 9 words per segment, keep it natural, but you can go up to 12 words if it maintains readability and flow. Avoid very short segments (1-2 words) unless they are natural pauses or standalone phrases.
@@ -142,11 +133,13 @@ Transcription text (in {language_name}):
 
 Return the JSON array of segments:"""
 
-        generation_config = {
-            "temperature": 0.2,
-            "max_output_tokens": 8192,
-        }
+    generation_config = {
+        "temperature": 0.2,
+        "max_output_tokens": 8192,
+    }
 
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL_NAME)
         try:
             config_with_json = generation_config.copy()
             config_with_json["response_mime_type"] = "application/json"
@@ -225,7 +218,7 @@ Return the JSON array of segments:"""
 
 def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
     """
-    Use Gemini 2.5 Flash to intelligently split long segments.
+    Use Gemini 3.6 Flash to intelligently split long segments.
     Processes in chunks to avoid token limits.
     """
     if not GEMINI_AVAILABLE:
