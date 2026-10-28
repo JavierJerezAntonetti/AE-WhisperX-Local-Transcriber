@@ -96,18 +96,42 @@ ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "ogg", "flac", "aac", "opus"}
 
 # --- Configuration ---
 # WhisperX model identifier (e.g., "large-v3", "large-v2", "medium", "base", etc.)
-MODEL_SIZE = "large-v3"
+MODEL_SIZE = os.environ.get("WHISPER_MODEL", "large-v3-turbo")
 # Gemini model used for sentence splitting.
-GEMINI_MODEL_NAME = "gemini-3.6-flash"
-GEMINI_MODEL_LABEL = "Gemini 3.6 Flash"
+GEMINI_MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL_LABEL = "Gemini 3.8 Flash"
 # DEVICE: "cpu" or "cuda" if you have a GPU and compatible PyTorch/WhisperX installed
 DEVICE = "cpu"
 # COMPUTE_TYPE: "int8" for CPU. For GPU, "float16" or "bfloat16" (if supported) are common.
 COMPUTE_TYPE = "int8"
-# Language is now auto-detected.
+# Concurrency tuning: 8 CPU threads matches physical Zen 3 cores on Ryzen 5800X
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "8"))
+CPU_THREADS = int(os.environ.get("CPU_THREADS", "8"))
 
-BATCH_SIZE = 16  # Batch size for transcription
-CPU_THREADS = 4  # Number of CPU threads for WhisperX
+# In-memory cache for wav2vec2 alignment models: (language_code, device) -> (align_model, metadata)
+ALIGNMENT_MODELS_CACHE = {}
+
+
+def get_alignment_model(language_code, device):
+    """
+    Retrieves or loads the alignment model for the specified language.
+    Cached in RAM so subsequent requests don't waste 2+ seconds reloading from disk.
+    """
+    cache_key = (language_code, device)
+    if cache_key not in ALIGNMENT_MODELS_CACHE:
+        print(f"Loading alignment model for detected language: {language_code}...")
+        align_model_start_time = time.time()
+        align_model, metadata = whisperx.load_align_model(
+            language_code=language_code, device=device
+        )
+        align_model_duration = time.time() - align_model_start_time
+        print(
+            f"Alignment model for '{language_code}' loaded in {align_model_duration:.2f}s and cached in RAM."
+        )
+        ALIGNMENT_MODELS_CACHE[cache_key] = (align_model, metadata)
+    else:
+        print(f"Using in-memory cached alignment model for '{language_code}'.")
+    return ALIGNMENT_MODELS_CACHE[cache_key]
 
 # --- Initialize Flask App ---
 app = Flask(__name__)
@@ -115,7 +139,7 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # --- Load WhisperX Model ---
 print(
-    f"Loading WhisperX model: {MODEL_SIZE} (language: auto-detect) on {DEVICE} with {COMPUTE_TYPE} compute type..."
+    f"Loading WhisperX model: {MODEL_SIZE} (language: auto-detect) on {DEVICE} with {COMPUTE_TYPE} compute type ({CPU_THREADS} CPU threads)..."
 )
 model = None  # Initialize model to None
 try:
@@ -128,11 +152,26 @@ try:
     )
     print(f"WhisperX Model {MODEL_SIZE} (Language: auto-detect) loaded successfully.")
 except Exception as e:
-    print(f"Error loading WhisperX model: {e}")
-    print(
-        "Please ensure you have a working internet connection for the first download,"
-    )
-    print("and that the model size/type is correct and WhisperX is installed properly.")
+    print(f"Error loading primary WhisperX model ({MODEL_SIZE}): {e}")
+    if MODEL_SIZE != "medium":
+        print("Attempting fallback to cached 'medium' model...")
+        try:
+            MODEL_SIZE = "medium"
+            model = whisperx.load_model(
+                MODEL_SIZE,
+                device=DEVICE,
+                compute_type=COMPUTE_TYPE,
+                language=None,
+                threads=CPU_THREADS,
+            )
+            print(f"WhisperX Model {MODEL_SIZE} fallback loaded successfully.")
+        except Exception as e_fb:
+            print(f"Fallback to 'medium' failed: {e_fb}")
+    if model is None:
+        print(
+            "Please ensure you have a working internet connection for the first download,"
+        )
+        print("and that the model size/type is correct and WhisperX is installed properly.")
     # model remains None
 
 # --- Create UPLOAD_FOLDER if it doesn't exist ---
@@ -201,55 +240,75 @@ Return the JSON array of segments:"""
 
     try:
         response_text = ""
+        models_to_try = [GEMINI_MODEL_NAME]
+        for fallback_m in ["gemini-3.6-flash", "gemini-3.5-flash-lite"]:
+            if fallback_m not in models_to_try:
+                models_to_try.append(fallback_m)
+
         if GEMINI_SDK_TYPE == "genai":
             client = genai.Client(api_key=gemini_api_key)
-            try:
-                response = client.models.generate_content(
-                    model=GEMINI_MODEL_NAME,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        max_output_tokens=8192,
-                        response_mime_type="application/json",
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                            disable=True
+            response = None
+            for m_name in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=m_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.2,
+                            max_output_tokens=8192,
+                            response_mime_type="application/json",
+                            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                                disable=True
+                            ),
                         ),
-                    ),
-                )
-            except Exception:
-                response = client.models.generate_content(
-                    model=GEMINI_MODEL_NAME,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        max_output_tokens=8192,
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                            disable=True
-                        ),
-                    ),
-                )
-            response_text = response.text.strip() if response.text else ""
+                    )
+                    break
+                except Exception:
+                    try:
+                        response = client.models.generate_content(
+                            model=m_name,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                temperature=0.2,
+                                max_output_tokens=8192,
+                                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                                    disable=True
+                                ),
+                            ),
+                        )
+                        break
+                    except Exception:
+                        continue
+            response_text = response.text.strip() if (response and response.text) else ""
         elif GEMINI_SDK_TYPE == "legacy":
             legacy_genai.configure(api_key=gemini_api_key)
-            model = legacy_genai.GenerativeModel(GEMINI_MODEL_NAME)
-            generation_config = {
-                "temperature": 0.2,
-                "max_output_tokens": 8192,
-            }
-            try:
-                config_with_json = generation_config.copy()
-                config_with_json["response_mime_type"] = "application/json"
-                response = model.generate_content(
-                    prompt, generation_config=config_with_json
-                )
-            except Exception:
-                print(
-                    "Note: JSON MIME type enforcement not supported/failed, falling back to standard text generation."
-                )
-                response = model.generate_content(
-                    prompt, generation_config=generation_config
-                )
-            response_text = response.text.strip() if response.text else ""
+            response = None
+            for m_name in models_to_try:
+                try:
+                    model = legacy_genai.GenerativeModel(m_name)
+                    generation_config = {
+                        "temperature": 0.2,
+                        "max_output_tokens": 8192,
+                        "response_mime_type": "application/json",
+                    }
+                    response = model.generate_content(
+                        prompt, generation_config=generation_config
+                    )
+                    break
+                except Exception:
+                    try:
+                        model = legacy_genai.GenerativeModel(m_name)
+                        response = model.generate_content(
+                            prompt,
+                            generation_config={
+                                "temperature": 0.2,
+                                "max_output_tokens": 8192,
+                            },
+                        )
+                        break
+                    except Exception:
+                        continue
+            response_text = response.text.strip() if (response and response.text) else ""
 
         # Robust JSON Parsing
         cleaned_text = response_text
@@ -431,6 +490,61 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
         return segments
 
 
+def assign_word_timings_to_sentences(sentence_segments, aligned_segments):
+    """
+    Matches word timings from aligned Whisper segments to Gemini sentence segments.
+    This enables separate text layers with word-level animations in After Effects
+    in a single pass, without transcribing the audio twice.
+    """
+    all_words = []
+    for seg in aligned_segments:
+        if "words" in seg and isinstance(seg["words"], list):
+            for w in seg["words"]:
+                all_words.append(w)
+
+    if not all_words:
+        return sentence_segments
+
+    word_idx = 0
+    num_words = len(all_words)
+
+    for seg in sentence_segments:
+        sentence_text = seg.get("text", "")
+        sentence_words = sentence_text.strip().split()
+        seg_words = []
+
+        for word_token in sentence_words:
+            if word_idx < num_words:
+                w_info = all_words[word_idx]
+                seg_words.append(
+                    {
+                        "word": word_token,
+                        "start": w_info.get("start", seg.get("start", 0)),
+                        "end": w_info.get("end", seg.get("end", 0)),
+                        "score": w_info.get("score", 1.0),
+                    }
+                )
+                word_idx += 1
+            else:
+                seg_words.append(
+                    {
+                        "word": word_token,
+                        "start": seg.get("start", 0),
+                        "end": seg.get("end", 0),
+                    }
+                )
+
+        if seg_words:
+            seg["words"] = seg_words
+            first_start = seg_words[0].get("start")
+            last_end = seg_words[-1].get("end")
+            if first_start is not None and last_end is not None:
+                seg["start"] = first_start
+                seg["end"] = max(last_end, first_start + 0.01)
+
+    return sentence_segments
+
+
 @app.route("/transcribe", methods=["POST"])
 def transcribe_audio():
     if model is None:
@@ -446,10 +560,17 @@ def transcribe_audio():
     if file.filename == "":
         return jsonify({"error": "No selected file"}), 400
 
-    # Get transcription level parameter (word or sentence)
+    # Get transcription level parameter (word, sentence, or both)
     transcription_level = request.form.get("transcription_level", "word")
-    if transcription_level not in ["word", "sentence"]:
+    if transcription_level not in ["word", "sentence", "both"]:
         transcription_level = "word"
+
+    # Flag for separate text layers (hybrid: sentence layout + word animations)
+    separate_text_layers = request.form.get("separate_text_layers", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
     # Get Gemini API key (optional, only needed for sentence-level splitting)
     gemini_api_key = request.form.get("gemini_api_key", "").strip()
@@ -495,8 +616,6 @@ def transcribe_audio():
                 f"Transcribing with WhisperX model ({MODEL_SIZE}, Language: {language_code if language_code else 'auto-detect'})..."
             )
             transcribe_start_time = time.time()
-            # When language=None in load_model, transcribe will detect the language.
-            # If language_code is provided, transcribe refers to it.
             result = model.transcribe(
                 audio, batch_size=BATCH_SIZE, language=language_code
             )
@@ -511,30 +630,19 @@ def transcribe_audio():
                 f"Initial transcription completed in {transcribe_duration:.2f}s. Detected language: {detected_language}"
             )
 
-            final_segments = result["segments"]
-            full_text = " ".join(
-                [
-                    segment["text"].strip()
-                    for segment in final_segments
-                    if "text" in segment
-                ]
+            # Determine whether word-level alignment is needed
+            needs_word_alignment = (
+                transcription_level == "word"
+                or separate_text_layers
+                or transcription_level == "both"
             )
 
-            # Only perform word-level alignment if transcription_level is 'word'
-            if transcription_level == "word":
+            aligned_segments = None
+            if needs_word_alignment:
                 try:
-                    print(
-                        f"Loading alignment model for detected language: {detected_language}..."
+                    align_model, metadata = get_alignment_model(
+                        detected_language, DEVICE
                     )
-                    align_model_start_time = time.time()
-                    align_model, metadata = whisperx.load_align_model(
-                        language_code=detected_language, device=DEVICE
-                    )
-                    align_model_duration = time.time() - align_model_start_time
-                    print(
-                        f"Alignment model for '{detected_language}' loaded in {align_model_duration:.2f}s."
-                    )
-
                     print("Aligning transcription...")
                     align_start_time = time.time()
                     result_aligned = whisperx.align(
@@ -547,50 +655,53 @@ def transcribe_audio():
                     )
                     align_duration = time.time() - align_start_time
                     print(f"Alignment completed in {align_duration:.2f}s.")
-
-                    final_segments = result_aligned["segments"]
-                    full_text = " ".join(
-                        [
-                            segment["text"].strip()
-                            for segment in final_segments
-                            if "text" in segment
-                        ]
-                    )
-
+                    aligned_segments = result_aligned["segments"]
                 except Exception as align_e:
                     print(
                         f"Could not align transcription for language '{detected_language}': {align_e}"
                     )
-                    print(
-                        "Proceeding with segment-level timestamps only from initial transcription."
-                    )
-                    # final_segments is already from model.transcribe if alignment fails
-                    for seg in final_segments:
+                    aligned_segments = result["segments"]
+                    for seg in aligned_segments:
                         seg["words_error"] = (
                             f"Alignment failed for language {detected_language}: {str(align_e)}"
                         )
-            else:
-                print(
-                    f"Sentence-level transcription requested. Skipping word alignment."
-                )
-                # Use Gemini to intelligently split long segments into shorter sentences
+
+            # Build final segments
+            if transcription_level == "word" and not separate_text_layers:
+                final_segments = aligned_segments or result["segments"]
+            elif transcription_level in ["sentence", "both"]:
                 if gemini_api_key:
                     print(
                         f"Using {GEMINI_MODEL_LABEL} to split segments into captionable sentences..."
                     )
-                    final_segments = split_segments_with_gemini(
-                        final_segments, gemini_api_key, detected_language
+                    sentence_segments = split_segments_with_gemini(
+                        result["segments"], gemini_api_key, detected_language
                     )
-                    # Recalculate full_text after Gemini splitting
-                    full_text = " ".join(
-                        [
-                            segment["text"].strip()
-                            for segment in final_segments
-                            if "text" in segment
-                        ]
-                    )
+                    if separate_text_layers and aligned_segments:
+                        print("Mapping word timestamps to sentence segments...")
+                        final_segments = assign_word_timings_to_sentences(
+                            sentence_segments, aligned_segments
+                        )
+                    else:
+                        final_segments = sentence_segments
                 else:
-                    print("No Gemini API key provided. Using original segments as-is.")
+                    print(
+                        "No Gemini API key provided. Using segments from WhisperX."
+                    )
+                    if separate_text_layers and aligned_segments:
+                        final_segments = aligned_segments
+                    else:
+                        final_segments = result["segments"]
+            else:
+                final_segments = aligned_segments or result["segments"]
+
+            full_text = " ".join(
+                [
+                    segment["text"].strip()
+                    for segment in final_segments
+                    if "text" in segment
+                ]
+            )
 
             audio_duration = 0
             if final_segments and "end" in final_segments[-1]:

@@ -60,7 +60,7 @@ Transcribe audio directly within Adobe After Effects using a local WhisperX API.
 5.  **Choose Transcription Mode:**
     - **Word-by-Word (Default):** Creates individual text layers for each word with precise timing.
     - **Sentence Level:** Creates one text layer per sentence. Optionally use Gemini API key for intelligent sentence splitting into captionable chunks (max 9 words).
-    - **Separate Text Layers:** When Sentence Level is selected, this mode makes two API calls - one for word timing and one for sentence text - then combines them to create word layers with sentence-corrected text, automatically arranged side-by-side.
+    - **Separate Text Layers:** When Sentence Level is selected, this mode operates in a unified single pass - retrieving word timing and sentence text together - to create word layers with sentence-corrected text, automatically arranged side-by-side.
 6.  **Transcribe:** Click "Select Audio File & Start Transcription".
     - The AE script sends the audio file to the local API with your selected transcription mode.
     - The API transcribes the audio using WhisperX:
@@ -229,11 +229,11 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
 
     - **Separate Text Layers Checkbox:**
       - Only available when "Sentence Level" is selected.
-      - When checked, makes two API calls (word + sentence) and combines them:
+      - When checked, operates in a unified single-pass mode:
         - Uses word-level timing for precise appearance of each word.
         - Uses sentence-level corrected text for better accuracy.
         - Automatically arranges words side-by-side in proper sentence formation.
-        - Perfect for creating word-by-word animations with correct sentence structure.
+        - Perfect for creating word-by-word animations with correct sentence structure in a single fast API call.
 
     - **Gemini API Key (Optional):**
       - Enter your Google Gemini API key to enable intelligent sentence splitting.
@@ -250,7 +250,7 @@ The preset also saves the **Max Chars/Line** and **Max Words/Line** values from 
 
 6.  **Processing:**
     - The process runs silently without interrupting alerts.
-    - For "Separate Text Layers" mode, two API calls are made automatically.
+    - For "Separate Text Layers" mode, a unified single-pass call is processed automatically.
     - If a Gemini API key is provided with Sentence Level, sentences are intelligently split.
     - RTL languages are automatically detected and handled.
 
@@ -301,11 +301,11 @@ After generating text layers, you can use the utilities to format them into para
 
 You can configure WhisperX model settings by editing the variables at the top of `whisperAPI.py`:
 
-- `MODEL_SIZE`: Whisper model size (`"tiny"`, `"base"`, `"small"`, `"medium"`, `"large-v3"`). Larger models are more accurate but require more memory. `"large-v3"` is the default.
+- `MODEL_SIZE`: Whisper model size (`"large-v3-turbo"`, `"large-v3"`, `"medium"`, `"small"`, `"base"`, `"tiny"`). Default is `"large-v3-turbo"`, which provides full `large-v3` acoustic accuracy with 3x–4x faster CPU decoding. Can also be set via the `WHISPER_MODEL` environment variable.
 - `DEVICE`: Set to `"cpu"` (default) or `"cuda"` if using an NVIDIA GPU.
 - `COMPUTE_TYPE`: Optimization precision. `"int8"` for CPU, `"float16"` or `"bfloat16"` for CUDA.
-- `BATCH_SIZE`: Batch size for transcription (default: `16`).
-- `CPU_THREADS`: Number of CPU threads used by WhisperX (default: `4`).
+- `BATCH_SIZE`: Batch size for transcription (default: `8`). Can be set via `BATCH_SIZE` environment variable.
+- `CPU_THREADS`: Number of CPU threads used by WhisperX (default: `8`). Can be set via `CPU_THREADS` environment variable.
 
 **Note:** The API accepts a `language` parameter directly from the AE script UI. If provided, it overrides automatic language detection.
 
@@ -331,9 +331,9 @@ You can configure WhisperX model settings by editing the variables at the top of
   - Verify `google-genai` is installed: `pip install google-genai`.
   - Check the API server console for any Gemini error messages.
   - If Gemini fails, the API will automatically fall back to original Whisper segments.
-- **Separate Text Layers Mode Issues:**
-  - This mode makes two API calls, so it takes slightly longer to complete.
-  - If word and sentence transcriptions diverge, try using Word-by-Word mode instead.
+- **Separate Text Layers Mode:**
+  - This mode runs in a single pass to fetch both sentence formatting and word-level timings together.
+  - If Gemini sentence splitting is disabled or fails, it falls back cleanly to Whisper segments.
 
 ---
 

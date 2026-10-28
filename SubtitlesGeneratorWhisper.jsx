@@ -538,6 +538,7 @@ if (typeof JSON !== "object") {
     scriptTempFolder,
     geminiApiKey,
     languageCode,
+    separateTextLayers,
   ) {
     var responseFilePath =
       scriptTempFolder.fsName +
@@ -556,6 +557,11 @@ if (typeof JSON !== "object") {
       '\\"" -F "transcription_level=' +
       transcriptionLevel +
       '"';
+
+    // Add separate_text_layers flag if requested (enables single-pass hybrid mode)
+    if (separateTextLayers) {
+      curlCommand += ' -F "separate_text_layers=true"';
+    }
 
     // Add Language Code if provided
     if (languageCode && languageCode.trim() !== "") {
@@ -780,43 +786,21 @@ if (typeof JSON !== "object") {
       // --- Get Language Code ---
       var languageCode = languageInput ? languageInput.text : "";
 
-      // --- API Call(s) ---
+      // --- API Call ---
       var transcriptionData;
-      var sentenceData;
       var processWarnings = []; // Track warnings/fallbacks for end summary
 
       try {
-        if (
-          useSeparateTextLayers &&
-          selectedTranscriptionLevel === "sentence"
-        ) {
-          // Make TWO API calls: one for word-level timing, one for sentence-level text
-          transcriptionData = makeApiCall(
-            audioFile,
-            "word",
-            scriptTempFolder,
-            "",
-            languageCode,
-          );
-          sentenceData = makeApiCall(
-            audioFile,
-            "sentence",
-            scriptTempFolder,
-            geminiApiKey,
-            languageCode,
-          );
-        } else {
-          // Normal mode: single API call
-          var apiKeyToUse =
-            selectedTranscriptionLevel === "sentence" ? geminiApiKey : "";
-          transcriptionData = makeApiCall(
-            audioFile,
-            selectedTranscriptionLevel,
-            scriptTempFolder,
-            apiKeyToUse,
-            languageCode,
-          );
-        }
+        var apiKeyToUse =
+          selectedTranscriptionLevel === "sentence" ? geminiApiKey : "";
+        transcriptionData = makeApiCall(
+          audioFile,
+          selectedTranscriptionLevel,
+          scriptTempFolder,
+          apiKeyToUse,
+          languageCode,
+          useSeparateTextLayers,
+        );
       } catch (e_api) {
         alert(e_api.toString());
         app.endUndoGroup();
@@ -840,21 +824,9 @@ if (typeof JSON !== "object") {
       var processedSegments;
       var isSeparateMode = false;
 
-      if (useSeparateTextLayers && sentenceData) {
-        try {
-          processedSegments = combineSeparateTextLayers(
-            transcriptionData,
-            sentenceData,
-          );
-          isSeparateMode = true;
-        } catch (e_combine) {
-          processWarnings.push(
-            "Error combining word and sentence data: " +
-              e_combine.toString() +
-              ". Falling back to normal mode.",
-          );
-          processedSegments = transcriptionData.segments;
-        }
+      if (useSeparateTextLayers) {
+        isSeparateMode = true;
+        processedSegments = transcriptionData.segments;
       } else {
         processedSegments = transcriptionData.segments;
       }
