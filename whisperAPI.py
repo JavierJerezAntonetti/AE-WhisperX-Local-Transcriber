@@ -100,10 +100,12 @@ MODEL_SIZE = os.environ.get("WHISPER_MODEL", "large-v3-turbo")
 # Gemini model used for sentence splitting.
 GEMINI_MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_MODEL_LABEL = "Gemini 3.8 Flash"
-# DEVICE: "cpu" or "cuda" if you have a GPU and compatible PyTorch/WhisperX installed
-DEVICE = "cpu"
+# DEVICE: "cpu" (default for maximum compatibility) or "cuda" if GPU is available
+DEVICE = os.environ.get("WHISPER_DEVICE", "cpu").lower()
 # COMPUTE_TYPE: "int8" for CPU. For GPU, "float16" or "bfloat16" (if supported) are common.
-COMPUTE_TYPE = "int8"
+COMPUTE_TYPE = os.environ.get(
+    "WHISPER_COMPUTE_TYPE", "int8" if DEVICE == "cpu" else "float16"
+)
 # Concurrency tuning: 8 CPU threads matches physical Zen 3 cores on Ryzen 5800X
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "8"))
 CPU_THREADS = int(os.environ.get("CPU_THREADS", "8"))
@@ -152,8 +154,24 @@ try:
     )
     print(f"WhisperX Model {MODEL_SIZE} (Language: auto-detect) loaded successfully.")
 except Exception as e:
-    print(f"Error loading primary WhisperX model ({MODEL_SIZE}): {e}")
-    if MODEL_SIZE != "medium":
+    print(f"Error loading primary WhisperX model ({MODEL_SIZE}) on {DEVICE}: {e}")
+    if DEVICE != "cpu":
+        print("Falling back to CPU device...")
+        DEVICE = "cpu"
+        COMPUTE_TYPE = "int8"
+        try:
+            model = whisperx.load_model(
+                MODEL_SIZE,
+                device=DEVICE,
+                compute_type=COMPUTE_TYPE,
+                language=None,
+                threads=CPU_THREADS,
+            )
+            print(f"WhisperX Model {MODEL_SIZE} loaded successfully on CPU fallback.")
+        except Exception as e_cpu:
+            print(f"CPU fallback for {MODEL_SIZE} failed: {e_cpu}")
+
+    if model is None and MODEL_SIZE != "medium":
         print("Attempting fallback to cached 'medium' model...")
         try:
             MODEL_SIZE = "medium"
