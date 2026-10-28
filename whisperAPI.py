@@ -6,6 +6,22 @@ import json
 import warnings
 import logging
 
+# --- Auto-register AMD ROCm / HIP bin path on Windows if present ---
+if sys.platform == "win32":
+    _hip_candidates = [
+        os.path.join(os.environ.get("HIP_PATH", ""), "bin"),
+        r"C:\Program Files\AMD\ROCm\7.2\bin",
+        r"C:\Program Files\AMD\ROCm\bin",
+    ]
+    for _d in _hip_candidates:
+        if _d and os.path.isdir(_d):
+            try:
+                os.add_dll_directory(_d)
+                os.environ["PATH"] = _d + ";" + os.environ.get("PATH", "")
+                break
+            except Exception:
+                pass
+
 # --- Configure Warnings and Logging to Suppress False-Alarm Framework Notices ---
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -110,18 +126,50 @@ COMPUTE_TYPE = os.environ.get(
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "8"))
 CPU_THREADS = int(os.environ.get("CPU_THREADS", "8"))
 
+# Determine if PyTorch itself has CUDA available.
+# On AMD GPUs using ROCm-enabled CTranslate2 on Windows, Whisper runs on GPU ('cuda')
+# while PyTorch may be CPU-only. In this hybrid setup, Whisper runs on GPU ('cuda')
+# while PyTorch models (Pyannote VAD and wav2vec2 alignment) safely run on CPU.
+TORCH_HAS_CUDA = False
+try:
+    import torch
+    TORCH_HAS_CUDA = torch.cuda.is_available()
+except Exception:
+    pass
+
+ALIGN_DEVICE = "cuda" if (DEVICE == "cuda" and TORCH_HAS_CUDA) else "cpu"
+
 # In-memory cache for wav2vec2 alignment models: (language_code, device) -> (align_model, metadata)
 ALIGNMENT_MODELS_CACHE = {}
 
 
-def get_alignment_model(language_code, device):
+def _get_vad_model_for_device(target_device):
+    """
+    Returns an explicitly initialized VAD model when running Whisper on GPU
+    with CPU-only PyTorch (e.g. AMD ROCm CTranslate2 + PyTorch CPU on Windows).
+    WhisperX default creates Pyannote on torch.device(device), which crashes if PyTorch has no CUDA.
+    """
+    if target_device == "cuda" and not TORCH_HAS_CUDA:
+        try:
+            from whisperx.vads import Pyannote
+            vad_options = {"chunk_size": 30, "vad_onset": 0.500, "vad_offset": 0.363}
+            vad = Pyannote(torch.device("cpu"), use_auth_token=None, **vad_options)
+            return vad
+        except Exception as e:
+            print(f"Notice: Could not pre-instantiate CPU Pyannote VAD: {e}")
+    return None
+
+
+def get_alignment_model(language_code, device=None):
     """
     Retrieves or loads the alignment model for the specified language.
     Cached in RAM so subsequent requests don't waste 2+ seconds reloading from disk.
     """
+    if device is None:
+        device = ALIGN_DEVICE
     cache_key = (language_code, device)
     if cache_key not in ALIGNMENT_MODELS_CACHE:
-        print(f"Loading alignment model for detected language: {language_code}...")
+        print(f"Loading alignment model for detected language: {language_code} on {device}...")
         align_model_start_time = time.time()
         align_model, metadata = whisperx.load_align_model(
             language_code=language_code, device=device
@@ -145,12 +193,14 @@ print(
 )
 model = None  # Initialize model to None
 try:
+    vad_model = _get_vad_model_for_device(DEVICE)
     model = whisperx.load_model(
         MODEL_SIZE,
         device=DEVICE,
         compute_type=COMPUTE_TYPE,
         language=None,  # Set to None for automatic language detection
         threads=CPU_THREADS,
+        vad_model=vad_model,
     )
     print(f"WhisperX Model {MODEL_SIZE} (Language: auto-detect) loaded successfully.")
 except Exception as e:
@@ -159,6 +209,7 @@ except Exception as e:
         print("Falling back to CPU device...")
         DEVICE = "cpu"
         COMPUTE_TYPE = "int8"
+        ALIGN_DEVICE = "cpu"
         try:
             model = whisperx.load_model(
                 MODEL_SIZE,
@@ -659,7 +710,7 @@ def transcribe_audio():
             if needs_word_alignment:
                 try:
                     align_model, metadata = get_alignment_model(
-                        detected_language, DEVICE
+                        detected_language, ALIGN_DEVICE
                     )
                     print("Aligning transcription...")
                     align_start_time = time.time()
@@ -668,7 +719,7 @@ def transcribe_audio():
                         align_model,
                         metadata,
                         audio,
-                        DEVICE,
+                        ALIGN_DEVICE,
                         return_char_alignments=False,
                     )
                     align_duration = time.time() - align_start_time
