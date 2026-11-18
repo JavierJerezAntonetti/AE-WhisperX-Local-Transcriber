@@ -1,10 +1,15 @@
 import os
+import re
+import copy
 import tempfile
+import threading
 import time  # For timing operations
 import sys  # For sys.frozen and sys._MEIPASS
 import json
 import warnings
 import logging
+from contextlib import nullcontext
+from concurrent.futures import ThreadPoolExecutor
 
 # --- Auto-register AMD ROCm / HIP bin path on Windows if present ---
 if sys.platform == "win32":
@@ -131,9 +136,17 @@ CPU_THREADS = int(os.environ.get("CPU_THREADS", "8"))
 # while PyTorch may be CPU-only. In this hybrid setup, Whisper runs on GPU ('cuda')
 # while PyTorch models (Pyannote VAD and wav2vec2 alignment) safely run on CPU.
 TORCH_HAS_CUDA = False
+torch = None
 try:
-    import torch
+    import torch as _torch
+
+    torch = _torch
+    torch.set_num_threads(CPU_THREADS)
     TORCH_HAS_CUDA = torch.cuda.is_available()
+    if TORCH_HAS_CUDA:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 except Exception:
     pass
 
@@ -141,6 +154,13 @@ ALIGN_DEVICE = "cuda" if (DEVICE == "cuda" and TORCH_HAS_CUDA) else "cpu"
 
 # In-memory cache for wav2vec2 alignment models: (language_code, device) -> (align_model, metadata)
 ALIGNMENT_MODELS_CACHE = {}
+
+# Precompiled regexes and Gemini client/model caches
+_RE_CODE_BLOCK = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+_RE_JSON_ARRAY = re.compile(r"(\[.*\])", re.DOTALL)
+_GEMINI_LOCK = threading.Lock()
+_GEMINI_CLIENTS_CACHE = {}
+_LAST_WORKING_GEMINI_MODEL = None
 
 
 def _get_vad_model_for_device(target_device):
@@ -308,14 +328,22 @@ Transcription text (in {language_name}):
 Return the JSON array of segments:"""
 
     try:
+        global _LAST_WORKING_GEMINI_MODEL
         response_text = ""
-        models_to_try = [GEMINI_MODEL_NAME]
-        for fallback_m in ["gemini-3.6-flash", "gemini-3.5-flash-lite"]:
+        models_to_try = []
+        with _GEMINI_LOCK:
+            if _LAST_WORKING_GEMINI_MODEL:
+                models_to_try.append(_LAST_WORKING_GEMINI_MODEL)
+        for fallback_m in [GEMINI_MODEL_NAME, "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
             if fallback_m not in models_to_try:
                 models_to_try.append(fallback_m)
 
         if GEMINI_SDK_TYPE == "genai":
-            client = genai.Client(api_key=gemini_api_key)
+            with _GEMINI_LOCK:
+                client = _GEMINI_CLIENTS_CACHE.get(gemini_api_key)
+                if client is None:
+                    client = genai.Client(api_key=gemini_api_key)
+                    _GEMINI_CLIENTS_CACHE[gemini_api_key] = client
             response = None
             for m_name in models_to_try:
                 try:
@@ -331,6 +359,8 @@ Return the JSON array of segments:"""
                             ),
                         ),
                     )
+                    with _GEMINI_LOCK:
+                        _LAST_WORKING_GEMINI_MODEL = m_name
                     break
                 except Exception:
                     try:
@@ -345,35 +375,42 @@ Return the JSON array of segments:"""
                                 ),
                             ),
                         )
+                        with _GEMINI_LOCK:
+                            _LAST_WORKING_GEMINI_MODEL = m_name
                         break
                     except Exception:
                         continue
             response_text = response.text.strip() if (response and response.text) else ""
         elif GEMINI_SDK_TYPE == "legacy":
-            legacy_genai.configure(api_key=gemini_api_key)
+            with _GEMINI_LOCK:
+                legacy_genai.configure(api_key=gemini_api_key)
             response = None
             for m_name in models_to_try:
                 try:
-                    model = legacy_genai.GenerativeModel(m_name)
+                    legacy_model = legacy_genai.GenerativeModel(m_name)
                     generation_config = {
                         "temperature": 0.2,
                         "max_output_tokens": 8192,
                         "response_mime_type": "application/json",
                     }
-                    response = model.generate_content(
+                    response = legacy_model.generate_content(
                         prompt, generation_config=generation_config
                     )
+                    with _GEMINI_LOCK:
+                        _LAST_WORKING_GEMINI_MODEL = m_name
                     break
                 except Exception:
                     try:
-                        model = legacy_genai.GenerativeModel(m_name)
-                        response = model.generate_content(
+                        legacy_model = legacy_genai.GenerativeModel(m_name)
+                        response = legacy_model.generate_content(
                             prompt,
                             generation_config={
                                 "temperature": 0.2,
                                 "max_output_tokens": 8192,
                             },
                         )
+                        with _GEMINI_LOCK:
+                            _LAST_WORKING_GEMINI_MODEL = m_name
                         break
                     except Exception:
                         continue
@@ -381,11 +418,7 @@ Return the JSON array of segments:"""
 
         # Robust JSON Parsing
         cleaned_text = response_text
-        import re
-
-        code_block = re.search(
-            r"```(?:json)?\s*(.*?)```", response_text, re.DOTALL | re.IGNORECASE
-        )
+        code_block = _RE_CODE_BLOCK.search(response_text)
         if code_block:
             cleaned_text = code_block.group(1).strip()
 
@@ -393,7 +426,7 @@ Return the JSON array of segments:"""
         try:
             sentences = json.loads(cleaned_text)
         except json.JSONDecodeError:
-            json_array_match = re.search(r"(\[.*\])", response_text, re.DOTALL)
+            json_array_match = _RE_JSON_ARRAY.search(response_text)
             if json_array_match:
                 try:
                     sentences = json.loads(json_array_match.group(1))
@@ -439,6 +472,41 @@ Return the JSON array of segments:"""
         return None
 
 
+def _map_chunk_sentences(chunk, combined_text, sentences):
+    """Map Gemini-split sentence strings proportionally back onto chunk timestamps."""
+    chunk_start_time = chunk[0].get("start", 0)
+    chunk_end_time = chunk[-1].get("end", 0)
+    chunk_duration = chunk_end_time - chunk_start_time
+    total_chars = len(combined_text)
+    current_char_pos = 0
+    mapped = []
+
+    for j, sentence in enumerate(sentences):
+        if not sentence or not sentence.strip():
+            continue
+
+        sentence = sentence.strip()
+        sentence_chars = len(sentence)
+
+        if total_chars > 0:
+            char_proportion_start = current_char_pos / total_chars
+            char_proportion_end = (current_char_pos + sentence_chars) / total_chars
+        else:
+            char_proportion_start = j / len(sentences)
+            char_proportion_end = (j + 1) / len(sentences)
+
+        sentence_start = chunk_start_time + (chunk_duration * char_proportion_start)
+        sentence_end = min(
+            chunk_start_time + (chunk_duration * char_proportion_end),
+            chunk_end_time,
+        )
+
+        mapped.append({"text": sentence, "start": sentence_start, "end": sentence_end})
+        current_char_pos += sentence_chars + 1  # +1 for space
+
+    return mapped
+
+
 def split_segments_with_gemini(segments, gemini_api_key, detected_language="en"):
     """
     Use Gemini 3.6 Flash to intelligently split long segments.
@@ -454,7 +522,8 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
 
     if GEMINI_SDK_TYPE == "legacy":
         try:
-            legacy_genai.configure(api_key=gemini_api_key)
+            with _GEMINI_LOCK:
+                legacy_genai.configure(api_key=gemini_api_key)
         except Exception as e:
             print(f"Error configuring Gemini API: {e}")
             return segments
@@ -470,86 +539,68 @@ def split_segments_with_gemini(segments, gemini_api_key, detected_language="en")
         chunks = []
         current_chunk = []
         chunk_start = segments[0].get("start", 0)
+        num_segments = len(segments)
 
-        for seg in segments:
+        for idx, seg in enumerate(segments):
             current_chunk.append(seg)
             if seg.get("end", 0) - chunk_start >= CHUNK_DURATION_SECONDS:
                 chunks.append(current_chunk)
                 current_chunk = []
-                # Will set start time at next iteration or after loop
-                if segments.index(seg) + 1 < len(segments):
-                    chunk_start = segments[segments.index(seg) + 1].get("start", 0)
+                if idx + 1 < num_segments:
+                    chunk_start = segments[idx + 1].get("start", 0)
 
         if current_chunk:
             chunks.append(current_chunk)
 
         print(
-            f"Split {len(segments)} segments into {len(chunks)} chunks for processing."
+            f"Split {num_segments} segments into {len(chunks)} chunks for processing."
         )
 
-        final_processed_segments = []
-
+        chunk_tasks = []
         for i, chunk in enumerate(chunks):
-            print(f"Processing chunk {i+1}/{len(chunks)} ({len(chunk)} segments)...")
-
-            # Prepare text for this chunk
             chunk_texts = [
                 s.get("text", "").strip() for s in chunk if s.get("text", "").strip()
             ]
             if not chunk_texts:
                 continue
+            chunk_tasks.append((i, chunk, " ".join(chunk_texts)))
 
-            combined_text = " ".join(chunk_texts)
+        if not chunk_tasks:
+            return []
 
-            # Calculate chunk boundaries
-            chunk_start_time = chunk[0].get("start", 0)
-            chunk_end_time = chunk[-1].get("end", 0)
-            chunk_duration = chunk_end_time - chunk_start_time
-
-            # Call Gemini
-            sentences = _call_gemini_split(
-                combined_text, detected_language, gemini_api_key
+        if len(chunk_tasks) == 1:
+            i, chunk, combined_text = chunk_tasks[0]
+            print(f"Processing chunk {i+1}/{len(chunks)} ({len(chunk)} segments)...")
+            sentences_list = [
+                _call_gemini_split(combined_text, detected_language, gemini_api_key)
+            ]
+        else:
+            max_workers = min(len(chunk_tasks), 4)
+            print(
+                f"Processing {len(chunk_tasks)} non-empty chunks in parallel (workers={max_workers})..."
             )
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(
+                        _call_gemini_split,
+                        combined_text,
+                        detected_language,
+                        gemini_api_key,
+                    )
+                    for _, _, combined_text in chunk_tasks
+                ]
+                sentences_list = [f.result() for f in futures]
 
+        final_processed_segments = []
+        for (i, chunk, combined_text), sentences in zip(chunk_tasks, sentences_list):
             if not sentences or not isinstance(sentences, list) or len(sentences) == 0:
                 print(f"Gemini failed for chunk {i+1}, using original chunk segments.")
                 final_processed_segments.extend(chunk)
                 continue
 
-            # Map sentences to timestamps
-            total_chars = len(combined_text)
-            current_char_pos = 0
-
-            for j, sentence in enumerate(sentences):
-                if not sentence or not sentence.strip():
-                    continue
-
-                sentence = sentence.strip()
-                sentence_chars = len(sentence)
-
-                # Calculate proportional timing relative to chunk start
-                if total_chars > 0:
-                    char_proportion_start = current_char_pos / total_chars
-                    char_proportion_end = (
-                        current_char_pos + sentence_chars
-                    ) / total_chars
-                else:
-                    char_proportion_start = j / len(sentences)
-                    char_proportion_end = (j + 1) / len(sentences)
-
-                sentence_start = chunk_start_time + (
-                    chunk_duration * char_proportion_start
-                )
-                sentence_end = chunk_start_time + (chunk_duration * char_proportion_end)
-
-                # Clamp to chunk boundaries
-                sentence_end = min(sentence_end, chunk_end_time)
-
-                final_processed_segments.append(
-                    {"text": sentence, "start": sentence_start, "end": sentence_end}
-                )
-
-                current_char_pos += sentence_chars + 1  # +1 for space
+            final_processed_segments.extend(
+                _map_chunk_sentences(chunk, combined_text, sentences)
+            )
 
         return final_processed_segments
 
@@ -622,12 +673,32 @@ def transcribe_audio():
             500,
         )
 
-    if "audio" not in request.files:
-        return jsonify({"error": "No audio file part in the request"}), 400
+    local_audio_path = request.form.get("audio_path", "").strip()
+    use_local_path = bool(
+        local_audio_path
+        and os.path.isfile(local_audio_path)
+        and allowed_file(local_audio_path)
+    )
 
-    file = request.files["audio"]
-    if file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
+    file = None
+    if not use_local_path:
+        if "audio" not in request.files:
+            if local_audio_path:
+                if not os.path.isfile(local_audio_path):
+                    return (
+                        jsonify(
+                            {"error": f"Audio file not found at path: {local_audio_path}"}
+                        ),
+                        400,
+                    )
+                return jsonify({"error": "File type not allowed"}), 400
+            return jsonify({"error": "No audio file part in the request"}), 400
+
+        file = request.files["audio"]
+        if file.filename == "":
+            return jsonify({"error": "No selected file"}), 400
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File type not allowed"}), 400
 
     # Get transcription level parameter (word, sentence, or both)
     transcription_level = request.form.get("transcription_level", "word")
@@ -649,11 +720,17 @@ def transcribe_audio():
     if language_code == "":
         language_code = None  # Use auto-detect if empty
 
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        temp_file_path = None
+    temp_file_path = None
+    gemini_executor = None
 
-        try:
+    try:
+        if use_local_path:
+            audio_input_path = local_audio_path
+            print(
+                f"Loading audio directly from local path for WhisperX: {audio_input_path}"
+            )
+        else:
+            filename = secure_filename(file.filename)
             if not os.path.exists(app.config["UPLOAD_FOLDER"]):
                 print(
                     f"Upload folder {app.config['UPLOAD_FOLDER']} not found during request. Attempting to create."
@@ -678,42 +755,63 @@ def transcribe_audio():
             with os.fdopen(temp_fd, "wb") as tmp:
                 file.save(tmp)
 
-            print(f"Loading audio for WhisperX: {temp_file_path}")
-            audio = whisperx.load_audio(temp_file_path)
+            audio_input_path = temp_file_path
+            print(f"Loading audio for WhisperX: {audio_input_path}")
 
+        audio = whisperx.load_audio(audio_input_path)
+
+        print(
+            f"Transcribing with WhisperX model ({MODEL_SIZE}, Language: {language_code if language_code else 'auto-detect'})..."
+        )
+        transcribe_start_time = time.time()
+        result = model.transcribe(
+            audio, batch_size=BATCH_SIZE, language=language_code
+        )
+        transcribe_duration = time.time() - transcribe_start_time
+
+        detected_language = result.get("language")
+        if not detected_language:
+            print("Error: WhisperX could not detect the language of the audio.")
+            return jsonify({"error": "Language detection failed."}), 500
+
+        print(
+            f"Initial transcription completed in {transcribe_duration:.2f}s. Detected language: {detected_language}"
+        )
+
+        # Determine whether word-level alignment is needed
+        needs_word_alignment = (
+            transcription_level == "word"
+            or separate_text_layers
+            or transcription_level == "both"
+        )
+        will_use_gemini = (
+            transcription_level in ["sentence", "both"] and bool(gemini_api_key)
+        )
+
+        # Overlap Gemini network call with local wav2vec2 alignment when both are needed
+        gemini_future = None
+        if needs_word_alignment and will_use_gemini:
             print(
-                f"Transcribing with WhisperX model ({MODEL_SIZE}, Language: {language_code if language_code else 'auto-detect'})..."
+                f"Starting {GEMINI_MODEL_LABEL} sentence splitting in parallel with word alignment..."
             )
-            transcribe_start_time = time.time()
-            result = model.transcribe(
-                audio, batch_size=BATCH_SIZE, language=language_code
-            )
-            transcribe_duration = time.time() - transcribe_start_time
-
-            detected_language = result.get("language")
-            if not detected_language:
-                print("Error: WhisperX could not detect the language of the audio.")
-                return jsonify({"error": "Language detection failed."}), 500
-
-            print(
-                f"Initial transcription completed in {transcribe_duration:.2f}s. Detected language: {detected_language}"
+            gemini_executor = ThreadPoolExecutor(max_workers=1)
+            gemini_future = gemini_executor.submit(
+                split_segments_with_gemini,
+                copy.deepcopy(result["segments"]),
+                gemini_api_key,
+                detected_language,
             )
 
-            # Determine whether word-level alignment is needed
-            needs_word_alignment = (
-                transcription_level == "word"
-                or separate_text_layers
-                or transcription_level == "both"
-            )
-
-            aligned_segments = None
-            if needs_word_alignment:
-                try:
-                    align_model, metadata = get_alignment_model(
-                        detected_language, ALIGN_DEVICE
-                    )
-                    print("Aligning transcription...")
-                    align_start_time = time.time()
+        aligned_segments = None
+        if needs_word_alignment:
+            try:
+                align_model, metadata = get_alignment_model(
+                    detected_language, ALIGN_DEVICE
+                )
+                print("Aligning transcription...")
+                align_start_time = time.time()
+                align_ctx = torch.inference_mode() if torch is not None else nullcontext()
+                with align_ctx:
                     result_aligned = whisperx.align(
                         result["segments"],
                         align_model,
@@ -722,86 +820,92 @@ def transcribe_audio():
                         ALIGN_DEVICE,
                         return_char_alignments=False,
                     )
-                    align_duration = time.time() - align_start_time
-                    print(f"Alignment completed in {align_duration:.2f}s.")
-                    aligned_segments = result_aligned["segments"]
-                except Exception as align_e:
-                    print(
-                        f"Could not align transcription for language '{detected_language}': {align_e}"
+                align_duration = time.time() - align_start_time
+                print(f"Alignment completed in {align_duration:.2f}s.")
+                aligned_segments = result_aligned["segments"]
+            except Exception as align_e:
+                print(
+                    f"Could not align transcription for language '{detected_language}': {align_e}"
+                )
+                aligned_segments = result["segments"]
+                for seg in aligned_segments:
+                    seg["words_error"] = (
+                        f"Alignment failed for language {detected_language}: {str(align_e)}"
                     )
-                    aligned_segments = result["segments"]
-                    for seg in aligned_segments:
-                        seg["words_error"] = (
-                            f"Alignment failed for language {detected_language}: {str(align_e)}"
-                        )
 
-            # Build final segments
-            if transcription_level == "word" and not separate_text_layers:
-                final_segments = aligned_segments or result["segments"]
-            elif transcription_level in ["sentence", "both"]:
-                if gemini_api_key:
+        # Build final segments
+        if transcription_level == "word" and not separate_text_layers:
+            final_segments = aligned_segments or result["segments"]
+        elif transcription_level in ["sentence", "both"]:
+            if gemini_api_key:
+                if gemini_future is not None:
+                    sentence_segments = gemini_future.result()
+                else:
                     print(
                         f"Using {GEMINI_MODEL_LABEL} to split segments into captionable sentences..."
                     )
                     sentence_segments = split_segments_with_gemini(
                         result["segments"], gemini_api_key, detected_language
                     )
-                    if separate_text_layers and aligned_segments:
-                        print("Mapping word timestamps to sentence segments...")
-                        final_segments = assign_word_timings_to_sentences(
-                            sentence_segments, aligned_segments
-                        )
-                    else:
-                        final_segments = sentence_segments
+                if separate_text_layers and aligned_segments:
+                    print("Mapping word timestamps to sentence segments...")
+                    final_segments = assign_word_timings_to_sentences(
+                        sentence_segments, aligned_segments
+                    )
                 else:
-                    print(
-                        "No Gemini API key provided. Using segments from WhisperX."
-                    )
-                    if separate_text_layers and aligned_segments:
-                        final_segments = aligned_segments
-                    else:
-                        final_segments = result["segments"]
+                    final_segments = sentence_segments
             else:
-                final_segments = aligned_segments or result["segments"]
+                print(
+                    "No Gemini API key provided. Using segments from WhisperX."
+                )
+                if separate_text_layers and aligned_segments:
+                    final_segments = aligned_segments
+                else:
+                    final_segments = result["segments"]
+        else:
+            final_segments = aligned_segments or result["segments"]
 
-            full_text = " ".join(
-                [
-                    segment["text"].strip()
-                    for segment in final_segments
-                    if "text" in segment
-                ]
-            )
+        full_text = " ".join(
+            [
+                segment["text"].strip()
+                for segment in final_segments
+                if "text" in segment
+            ]
+        )
 
-            audio_duration = 0
-            if final_segments and "end" in final_segments[-1]:
-                audio_duration = final_segments[-1]["end"]
+        audio_duration = 0
+        if final_segments and "end" in final_segments[-1]:
+            audio_duration = final_segments[-1]["end"]
 
-            response_data = {
-                "language": detected_language,
-                "duration_seconds": audio_duration,
-                "full_text": full_text.strip(),
-                "segments": final_segments,
-                "transcription_level": transcription_level,
-            }
-            return jsonify(response_data), 200
+        response_data = {
+            "language": detected_language,
+            "duration_seconds": audio_duration,
+            "full_text": full_text.strip(),
+            "segments": final_segments,
+            "transcription_level": transcription_level,
+        }
+        return jsonify(response_data), 200
 
-        except Exception as e:
-            print(f"Error during WhisperX transcription or alignment: {e}")
-            import traceback
+    except Exception as e:
+        print(f"Error during WhisperX transcription or alignment: {e}")
+        import traceback
 
-            traceback.print_exc()
-            return jsonify({"error": f"Transcription failed: {str(e)}"}), 500
-        finally:
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.remove(temp_file_path)
-                    print(f"Cleaned up temporary file: {temp_file_path}")
-                except Exception as e_remove:
-                    print(
-                        f"Error cleaning up temporary file {temp_file_path}: {e_remove}"
-                    )
-    else:
-        return jsonify({"error": "File type not allowed"}), 400
+        traceback.print_exc()
+        return jsonify({"error": f"Transcription failed: {str(e)}"}), 500
+    finally:
+        if gemini_executor is not None:
+            try:
+                gemini_executor.shutdown(wait=False)
+            except Exception:
+                pass
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                print(f"Cleaned up temporary file: {temp_file_path}")
+            except Exception as e_remove:
+                print(
+                    f"Error cleaning up temporary file {temp_file_path}: {e_remove}"
+                )
 
 
 @app.route("/health", methods=["GET"])

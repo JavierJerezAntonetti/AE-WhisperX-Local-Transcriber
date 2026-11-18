@@ -551,10 +551,22 @@ if (typeof JSON !== "object") {
 
     var audioPathForCurl = audioFile.fsName.replace(/\\/g, "/");
     var responsePathForCurl = responseFile.fsName.replace(/\\/g, "/");
+    var isLocalServer =
+      WHISPER_API_URL.indexOf("127.0.0.1") !== -1 ||
+      WHISPER_API_URL.indexOf("localhost") !== -1;
+    var isSafeAsciiPath =
+      isLocalServer &&
+      /^[\x20-\x7E]+$/.test(audioPathForCurl) &&
+      audioPathForCurl.indexOf(";") === -1 &&
+      audioPathForCurl.indexOf('"') === -1 &&
+      audioPathForCurl.charAt(0) !== "@" &&
+      audioPathForCurl.charAt(0) !== "<";
     var curlCommand =
-      'curl -s -S -X POST -F "audio=@\\"' +
-      audioPathForCurl +
-      '\\"" -F "transcription_level=' +
+      'curl -s -S -X POST -F "' +
+      (isSafeAsciiPath
+        ? "audio_path=" + audioPathForCurl
+        : 'audio=@\\"' + audioPathForCurl + '\\"') +
+      '" -F "transcription_level=' +
       transcriptionLevel +
       '"';
 
@@ -846,15 +858,128 @@ if (typeof JSON !== "object") {
           timeOffset = 3 * frameDuration;
         }
 
-        // --- OPTIMIZATION START: Pre-configure TextDocument ---
-        // Creating a new TextDocument object and setting properties for every word is slow.
-        // We create a template once and reuse it.
+        // Determine if we should process word-by-word or sentence-by-sentence
+        var shouldProcessWords =
+          selectedTranscriptionLevel === "word" || isSeparateMode;
+
+        // Pre-scan in pure JS to ensure at least one valid layer will be created
+        // before creating the template layer and pre-comp upfront.
+        var hasValidLayersToCreate = false;
+        for (var p = 0; p < processedSegments.length; p++) {
+          var preSeg = processedSegments[p];
+          if (!shouldProcessWords) {
+            var preText = preSeg.text || "";
+            var preStart = parseFloat(preSeg.start);
+            var preEnd = parseFloat(preSeg.end);
+            if (
+              preText &&
+              !isNaN(preStart) &&
+              !isNaN(preEnd) &&
+              preEnd > preStart
+            ) {
+              hasValidLayersToCreate = true;
+              break;
+            }
+          } else if (
+            !preSeg.words_error &&
+            preSeg.words &&
+            preSeg.words.length > 0
+          ) {
+            for (var q = 0; q < preSeg.words.length; q++) {
+              var preWord = preSeg.words[q];
+              var preWordText = "";
+              if (
+                preWord &&
+                typeof preWord.word !== "undefined" &&
+                preWord.word !== null
+              ) {
+                preWordText = String(preWord.word);
+              }
+              if (preWordText.slice(-1) === ".") {
+                preWordText = preWordText.slice(0, -1);
+              }
+              var preWStart = parseFloat(preWord.start);
+              var preWEnd = parseFloat(preWord.end);
+              if (
+                preWordText &&
+                !isNaN(preWStart) &&
+                !isNaN(preWEnd) &&
+                preWEnd > preWStart
+              ) {
+                hasValidLayersToCreate = true;
+                break;
+              }
+            }
+            if (hasValidLayersToCreate) break;
+          }
+        }
+
+        // Hoist loop-invariant comp/timing/animation values out of the layer creation loop
+        var compWidth = comp.width;
+        var compHeight = comp.height;
+        var halfCompWidth = compWidth / 2;
+        var halfCompHeight = compHeight / 2;
+        var compCenter = [halfCompWidth, halfCompHeight];
+        var minDuration = frameDuration > 0 ? frameDuration : 0.04;
+        var twoFrames = 2 * frameDuration;
+        var threeFrames = 3 * frameDuration;
+        var fourFrames = 4 * frameDuration;
+        var doPopInAnim =
+          frameDuration > 0 &&
+          !!(enableAnimationsCheckbox && enableAnimationsCheckbox.value);
+        var doFadeAnim =
+          frameDuration > 0 &&
+          !!(enableFadeAnimationsCheckbox && enableFadeAnimationsCheckbox.value);
+        var scaleValues3 = [
+          [95, 95],
+          [105, 105],
+          [100, 100],
+        ];
+        var scaleValues2 = [
+          [95, 95],
+          [100, 100],
+        ];
+        var fadeValues2 = [0, 100];
+
+        var targetComp = comp;
+        var precompCreated = false;
         var templateTextDocument = null;
         var tempTemplateLayer = null;
-        {
-          tempTemplateLayer = comp.layers.addText("TEMPLATE"); // Create dummy layer
-          tempTemplateLayer.enabled = false; // Hide it
-          var tempProp = tempTemplateLayer.property("Source Text");
+
+        if (hasValidLayersToCreate) {
+          // --- OPTIMIZATION: Pre-compose upfront so layers build off-screen ---
+          // Creating hundreds of layers inside an inactive comp skips live UI/Timeline redraws
+          // and avoids moving layers across comps afterward.
+          tempTemplateLayer = comp.layers.addText("TEMPLATE");
+          try {
+            var subtitlePrecompLayer = comp.layers.precompose(
+              [tempTemplateLayer.index],
+              PRECOMP_NAME,
+              true,
+            );
+            if (
+              subtitlePrecompLayer &&
+              subtitlePrecompLayer.source instanceof CompItem
+            ) {
+              targetComp = subtitlePrecompLayer.source;
+              tempTemplateLayer = targetComp.layer(1);
+              precompCreated = true;
+            } else {
+              processWarnings.push(
+                "Failed to pre-compose the subtitle layers.",
+              );
+            }
+          } catch (e_precomp) {
+            processWarnings.push(
+              "Error during pre-composition: " + e_precomp.toString(),
+            );
+          }
+
+          // --- OPTIMIZATION: Pre-configure TextDocument once and reuse it ---
+          tempTemplateLayer.enabled = false;
+          var tempProp = tempTemplateLayer
+            .property("ADBE Text Properties")
+            .property("ADBE Text Document");
           templateTextDocument = tempProp.value;
 
           templateTextDocument.font = currentFontName;
@@ -891,16 +1016,13 @@ if (typeof JSON !== "object") {
           } else {
             templateTextDocument.applyStroke = false;
           }
-
-          // Do NOT remove layer yet, as it invalidates the TextDocument object reference in some AE versions
+          // Do NOT remove tempTemplateLayer yet, as it invalidates the TextDocument reference in some AE versions
         }
-        // --- OPTIMIZATION END ---
 
-        // Determine if we should process word-by-word or sentence-by-sentence
-        var shouldProcessWords =
-          selectedTranscriptionLevel === "word" || isSeparateMode;
+        var segmentCreatedGroups = isSeparateMode ? [] : null;
+        var numSegments = processedSegments.length;
 
-        for (var i = 0; i < processedSegments.length; i++) {
+        for (var i = 0; i < numSegments; i++) {
           var segment = processedSegments[i];
 
           // For sentence-level (non-separate mode), create one layer per sentence
@@ -918,8 +1040,11 @@ if (typeof JSON !== "object") {
               var adjustedStartTime = sentenceStart - timeOffset;
               if (adjustedStartTime < 0) adjustedStartTime = 0;
               var adjustedEndTime = sentenceEnd - timeOffset;
+              if (adjustedEndTime <= adjustedStartTime) {
+                adjustedEndTime = adjustedStartTime + minDuration;
+              }
 
-              var textLayer = comp.layers.addText(sentenceText);
+              var textLayer = targetComp.layers.addText(sentenceText);
               textLayer.name =
                 "S_" +
                 i +
@@ -930,46 +1055,34 @@ if (typeof JSON !== "object") {
               textLayer.inPoint = adjustedStartTime;
               textLayer.outPoint = adjustedEndTime;
 
-              if (textLayer.outPoint <= textLayer.inPoint) {
-                if (frameDuration > 0) {
-                  textLayer.outPoint = textLayer.inPoint + frameDuration;
-                } else {
-                  textLayer.outPoint = textLayer.inPoint + 0.04;
-                }
-              }
-
-              var textProp = textLayer.property("Source Text");
-              if (textProp && textProp.numKeys === 0) {
-                // OPTIMIZED: Use pre-configured template
-                templateTextDocument.text = sentenceText;
-                textProp.setValue(templateTextDocument);
-              }
+              var textGroup = textLayer.property("ADBE Text Properties");
+              templateTextDocument.text = sentenceText;
+              textGroup
+                .property("ADBE Text Document")
+                .setValue(templateTextDocument);
 
               try {
-                var textLayerMoreOptions = textLayer
-                  .property("Text")
-                  .property("More Options");
-                if (textLayerMoreOptions) {
-                  textLayerMoreOptions.property("Fill & Stroke").setValue(2);
+                var moreOptions = textGroup.property("ADBE Text More Options");
+                if (moreOptions) {
+                  moreOptions.property("ADBE Text Render Order").setValue(2);
                 }
               } catch (e_render_order) {}
 
+              var transformGroup = textLayer.property("ADBE Transform Group");
               try {
                 var rect = textLayer.sourceRectAtTime(adjustedStartTime, false);
                 if (rect && rect.width > 0 && rect.height > 0) {
                   var newAnchorX = rect.left + rect.width / 2;
                   var newAnchorY = rect.top + rect.height / 2;
-                  textLayer
-                    .property("Transform")
-                    .property("Anchor Point")
+                  transformGroup
+                    .property("ADBE Anchor Point")
                     .setValue([newAnchorX, newAnchorY]);
                 }
               } catch (e_anchor) {}
 
-              var positionProp = textLayer
-                .property("Transform")
-                .property("Position");
-              positionProp.setValue([comp.width / 2, comp.height / 2]);
+              transformGroup
+                .property("ADBE Position")
+                .setValue(compCenter);
 
               totalWordsCreated++;
               createdTextLayers.push(textLayer);
@@ -987,8 +1100,12 @@ if (typeof JSON !== "object") {
             continue;
           }
 
-          for (var j = 0; j < segment.words.length; j++) {
-            var wordData = segment.words[j];
+          var segWords = segment.words;
+          var numSegWords = segWords.length;
+          var currentSegItems = isSeparateMode ? [] : null;
+
+          for (var j = 0; j < numSegWords; j++) {
+            var wordData = segWords[j];
 
             var wordText = "";
             if (
@@ -1018,17 +1135,10 @@ if (typeof JSON !== "object") {
               }
               var adjustedOriginalEndTime = originalApiEndTime - timeOffset;
 
-              var textLayer = comp.layers.addText(wordText);
-              var safeWordText = wordText
-                .replace(/[^a-zA-Z0-9_]/g, "")
-                .substring(0, MAX_LAYER_NAME_WORD_LENGTH);
-              textLayer.name = "W_" + i + "" + j + "" + safeWordText;
-              textLayer.inPoint = adjustedStartTime;
-
               var determinedOutPoint = adjustedOriginalEndTime;
 
-              if (j < segment.words.length - 1) {
-                var nextWordInSegmentData = segment.words[j + 1];
+              if (j < numSegWords - 1) {
+                var nextWordInSegmentData = segWords[j + 1];
                 if (
                   nextWordInSegmentData &&
                   typeof nextWordInSegmentData.start !== "undefined"
@@ -1044,7 +1154,7 @@ if (typeof JSON !== "object") {
                     }
                   }
                 }
-              } else if (i < processedSegments.length - 1) {
+              } else if (i < numSegments - 1) {
                 var nextSegmentData = processedSegments[i + 1];
                 if (
                   nextSegmentData &&
@@ -1073,102 +1183,94 @@ if (typeof JSON !== "object") {
                   }
                 }
               }
+
+              if (determinedOutPoint <= adjustedStartTime) {
+                determinedOutPoint = adjustedStartTime + minDuration;
+              }
+
+              var textLayer = targetComp.layers.addText(wordText);
+              var safeWordText = wordText
+                .replace(/[^a-zA-Z0-9_]/g, "")
+                .substring(0, MAX_LAYER_NAME_WORD_LENGTH);
+              textLayer.name = "W_" + i + "" + j + "" + safeWordText;
+              textLayer.inPoint = adjustedStartTime;
               textLayer.outPoint = determinedOutPoint;
 
-              if (textLayer.outPoint <= textLayer.inPoint) {
-                if (frameDuration > 0) {
-                  textLayer.outPoint = textLayer.inPoint + frameDuration;
-                } else {
-                  textLayer.outPoint = textLayer.inPoint + 0.04;
-                }
-              }
-
-              var textProp = textLayer.property("Source Text");
-              if (textProp && textProp.numKeys === 0) {
-                // OPTIMIZED: Use pre-configured template
-                templateTextDocument.text = wordText;
-                textProp.setValue(templateTextDocument);
-              }
+              var textGroup = textLayer.property("ADBE Text Properties");
+              templateTextDocument.text = wordText;
+              textGroup
+                .property("ADBE Text Document")
+                .setValue(templateTextDocument);
 
               // Set layer-level render order to "All Fills Over All Strokes"
               try {
-                var textLayerMoreOptions = textLayer
-                  .property("Text")
-                  .property("More Options");
-                if (textLayerMoreOptions) {
-                  textLayerMoreOptions.property("Fill & Stroke").setValue(2); // 2 = All Fills Over All Strokes
+                var moreOptions = textGroup.property("ADBE Text More Options");
+                if (moreOptions) {
+                  moreOptions.property("ADBE Text Render Order").setValue(2); // 2 = All Fills Over All Strokes
                 }
               } catch (e_render_order) {
                 // This might fail on very old AE versions, but it's safe to ignore.
               }
 
-              // OPTIMIZATION: skipped sourceRectAtTime for massive speedup
-              /*
-              try {
-                var rect = textLayer.sourceRectAtTime(adjustedStartTime, false);
-                if (rect && rect.width > 0 && rect.height > 0) {
-                  var newAnchorX = rect.left + rect.width / 2;
-                  var newAnchorY = 0;
-                  textLayer
-                    .property("Transform")
-                    .property("Anchor Point")
-                    .setValue([newAnchorX, newAnchorY]);
-                }
-              } catch (e_anchor) {}
-              */
-              var positionProp = textLayer
-                .property("Transform")
-                .property("Position");
-              positionProp.setValue([comp.width / 2, comp.height / 2]);
+              var transformGroup = textLayer.property("ADBE Transform Group");
+              var positionProp = transformGroup.property("ADBE Position");
+              positionProp.setValue(compCenter);
 
-              if (frameDuration > 0) {
-                var scaleProp = textLayer
-                  .property("Transform")
-                  .property("Scale");
-                // Only add pop-in animation if user enabled it in the UI
-                if (
-                  enableAnimationsCheckbox &&
-                  enableAnimationsCheckbox.value
-                ) {
-                  var keyTime1 = adjustedStartTime;
-                  var keyTime2 = adjustedStartTime + 2 * frameDuration;
-                  var keyTime3 = adjustedStartTime + 4 * frameDuration;
-
-                  scaleProp.setValueAtTime(keyTime1, [95, 95]);
-                  if (keyTime2 < textLayer.outPoint) {
-                    scaleProp.setValueAtTime(keyTime2, [105, 105]);
-                    if (keyTime3 < textLayer.outPoint) {
-                      scaleProp.setValueAtTime(keyTime3, [100, 100]);
-                    } else {
-                      scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
-                    }
-                  } else {
-                    scaleProp.setValueAtTime(textLayer.outPoint, [100, 100]);
-                  }
-                }
-
-                // Only add fade-in animation if user enabled it in the UI
-                if (
-                  enableFadeAnimationsCheckbox &&
-                  enableFadeAnimationsCheckbox.value
-                ) {
-                  var opacityProp = textLayer
-                    .property("Transform")
-                    .property("Opacity");
-                  var fadeTime1 = adjustedStartTime;
-                  var fadeTime2 = adjustedStartTime + 3 * frameDuration; // reduced by 25%
-
-                  opacityProp.setValueAtTime(fadeTime1, 0);
-                  if (fadeTime2 < textLayer.outPoint) {
-                    opacityProp.setValueAtTime(fadeTime2, 100);
-                  } else {
-                    opacityProp.setValueAtTime(textLayer.outPoint, 100);
-                  }
+              if (doPopInAnim) {
+                var scaleProp = transformGroup.property("ADBE Scale");
+                var keyTime1 = adjustedStartTime;
+                var keyTime2 = adjustedStartTime + twoFrames;
+                if (keyTime2 < determinedOutPoint) {
+                  var keyTime3 = adjustedStartTime + fourFrames;
+                  scaleProp.setValuesAtTimes(
+                    [
+                      keyTime1,
+                      keyTime2,
+                      keyTime3 < determinedOutPoint
+                        ? keyTime3
+                        : determinedOutPoint,
+                    ],
+                    scaleValues3,
+                  );
+                } else {
+                  scaleProp.setValuesAtTimes(
+                    [keyTime1, determinedOutPoint],
+                    scaleValues2,
+                  );
                 }
               }
+
+              if (doFadeAnim) {
+                var opacityProp = transformGroup.property("ADBE Opacity");
+                var fadeTime2 = adjustedStartTime + threeFrames; // reduced by 25%
+                opacityProp.setValuesAtTimes(
+                  [
+                    adjustedStartTime,
+                    fadeTime2 < determinedOutPoint
+                      ? fadeTime2
+                      : determinedOutPoint,
+                  ],
+                  fadeValues2,
+                );
+              }
+
               totalWordsCreated++;
               createdTextLayers.push(textLayer);
+              if (isSeparateMode) {
+                currentSegItems.push({
+                  layer: textLayer,
+                  text: wordText,
+                  inPoint: adjustedStartTime,
+                  outPoint: determinedOutPoint,
+                  positionProp: positionProp,
+                  width: 0,
+                });
+              }
             }
+          }
+
+          if (isSeparateMode && currentSegItems.length > 0) {
+            segmentCreatedGroups.push(currentSegItems);
           }
         }
 
@@ -1179,153 +1281,105 @@ if (typeof JSON !== "object") {
         }
 
         // Auto-arrange words side-by-side if in separate text layers mode
-        if (isSeparateMode && createdTextLayers.length > 0) {
+        if (isSeparateMode && segmentCreatedGroups.length > 0) {
           try {
-            // Group layers by segments for proper arrangement
-            var currentSegmentIndex = 0;
-            var segmentStartIndex = 0;
+            var maxChars = parseInt(maxCharsInput.text, 10);
+            if (isNaN(maxChars) || maxChars <= 0)
+              maxChars = DEFAULT_MAX_CHARS_PER_LINE;
 
-            for (var segIdx = 0; segIdx < processedSegments.length; segIdx++) {
-              var seg = processedSegments[segIdx];
-              if (!seg.words || seg.words.length === 0) continue;
+            var maxWords = parseInt(maxWordsInput.text, 10);
+            if (isNaN(maxWords) || maxWords <= 0)
+              maxWords = DEFAULT_MAX_WORDS_PER_LINE;
 
-              var segmentLayers = [];
-              for (
-                var wIdx = 0;
-                wIdx < seg.words.length &&
-                segmentStartIndex + wIdx < createdTextLayers.length;
-                wIdx++
-              ) {
-                segmentLayers.push(createdTextLayers[segmentStartIndex + wIdx]);
+            var useRtl = forceRtlCheckbox.value;
+            var lineHeight = currentFontSize * 1.05;
+            var spaceWidth = currentFontSize / 4;
+            var startY = halfCompHeight;
+
+            for (
+              var grpIdx = 0;
+              grpIdx < segmentCreatedGroups.length;
+              grpIdx++
+            ) {
+              var segItems = segmentCreatedGroups[grpIdx];
+
+              // Sort items by cached inPoint (pure JS, 0 DOM calls)
+              segItems.sort(function (a, b) {
+                return a.inPoint - b.inPoint;
+              });
+
+              var latestOutPoint = 0;
+              for (var i = 0; i < segItems.length; i++) {
+                if (segItems[i].outPoint > latestOutPoint) {
+                  latestOutPoint = segItems[i].outPoint;
+                }
               }
 
-              if (segmentLayers.length > 0) {
-                // Arrange this segment's words side by side
-                var maxChars = parseInt(maxCharsInput.text, 10);
-                if (isNaN(maxChars) || maxChars <= 0)
-                  maxChars = DEFAULT_MAX_CHARS_PER_LINE;
+              var lines = [];
+              var currentLine = [];
+              var currentLineWordCount = 0;
+              var currentLineCharCount = 0;
 
-                var maxWords = parseInt(maxWordsInput.text, 10);
-                if (isNaN(maxWords) || maxWords <= 0)
-                  maxWords = DEFAULT_MAX_WORDS_PER_LINE;
+              for (var i = 0; i < segItems.length; i++) {
+                var item = segItems[i];
+                var word = item.text;
+                if (word === "") continue;
 
-                var useRtl = forceRtlCheckbox.value;
+                var wouldExceedLimits =
+                  currentLineWordCount > 0 &&
+                  (currentLineWordCount + 1 > maxWords ||
+                    currentLineCharCount + 1 + word.length > maxChars);
 
-                // Sort layers by inPoint
-                segmentLayers.sort(function (a, b) {
-                  return a.inPoint - b.inPoint;
-                });
-
-                var latestOutPoint = 0;
-                for (var i = 0; i < segmentLayers.length; i++) {
-                  if (segmentLayers[i].outPoint > latestOutPoint) {
-                    latestOutPoint = segmentLayers[i].outPoint;
-                  }
-                }
-
-                var lines = [];
-                var currentLine = [];
-                var currentLineWordCount = 0;
-                var currentLineCharCount = 0;
-
-                for (var i = 0; i < segmentLayers.length; i++) {
-                  var layer = segmentLayers[i];
-                  var word = layer.property("Source Text").value.text;
-                  if (word === "") continue;
-
-                  var wouldExceedLimits =
-                    currentLineWordCount > 0 &&
-                    (currentLineWordCount + 1 > maxWords ||
-                      currentLineCharCount + 1 + word.length > maxChars);
-
-                  if (wouldExceedLimits) {
-                    lines.push(currentLine);
-                    currentLine = [layer];
-                    currentLineWordCount = 1;
-                    currentLineCharCount = word.length;
-                  } else {
-                    currentLine.push(layer);
-                    currentLineWordCount++;
-                    currentLineCharCount +=
-                      (currentLineCharCount > 0 ? 1 : 0) + word.length;
-                  }
-                }
-                if (currentLine.length > 0) {
+                if (wouldExceedLimits) {
                   lines.push(currentLine);
-                }
-
-                var firstLayer = segmentLayers[0];
-                var textProp = firstLayer.property("Source Text");
-                var textDoc = textProp.value;
-                var lineHeight = textDoc.fontSize * 1.05;
-
-                var startY = firstLayer
-                  .property("Transform")
-                  .property("Position").value[1];
-
-                for (var i = 0; i < lines.length; i++) {
-                  var lineLayers = lines[i];
-                  var totalLineWidth = 0;
-                  var spaceWidth = 0;
-
-                  for (var j = 0; j < lineLayers.length; j++) {
-                    var currentLayer = lineLayers[j];
-                    var rect = currentLayer.sourceRectAtTime(
-                      currentLayer.inPoint + 0.001,
-                      false,
-                    );
-                    totalLineWidth += rect.width;
-                    if (j < lineLayers.length - 1) {
-                      var currentTextProp =
-                        currentLayer.property("Source Text");
-                      var currentTextDoc = currentTextProp.value;
-                      spaceWidth = currentTextDoc.fontSize / 4;
-                      totalLineWidth += spaceWidth;
-                    }
-                  }
-
-                  var currentX = useRtl
-                    ? comp.width / 2 + totalLineWidth / 2
-                    : comp.width / 2 - totalLineWidth / 2;
-                  var currentY = startY + i * lineHeight;
-
-                  for (var j = 0; j < lineLayers.length; j++) {
-                    var layer = lineLayers[j];
-                    var rect = layer.sourceRectAtTime(
-                      layer.inPoint + 0.001,
-                      false,
-                    );
-
-                    var newX = useRtl
-                      ? currentX - rect.width / 2
-                      : currentX + rect.width / 2;
-                    var positionProp = layer
-                      .property("Transform")
-                      .property("Position");
-
-                    if (positionProp.dimensionsSeparated) {
-                      positionProp.setValue([
-                        newX,
-                        currentY,
-                        positionProp.value[2] || 0,
-                      ]);
-                    } else {
-                      positionProp.setValue([newX, currentY]);
-                    }
-
-                    layer.outPoint = latestOutPoint;
-
-                    var layerTextProp = layer.property("Source Text");
-                    var layerTextDoc = layerTextProp.value;
-                    spaceWidth = layerTextDoc.fontSize / 4;
-                    currentX += useRtl
-                      ? -(rect.width + spaceWidth)
-                      : rect.width + spaceWidth;
-                  }
+                  currentLine = [item];
+                  currentLineWordCount = 1;
+                  currentLineCharCount = word.length;
+                } else {
+                  currentLine.push(item);
+                  currentLineWordCount++;
+                  currentLineCharCount +=
+                    (currentLineCharCount > 0 ? 1 : 0) + word.length;
                 }
               }
+              if (currentLine.length > 0) {
+                lines.push(currentLine);
+              }
 
-              segmentStartIndex += seg.words.length;
+              for (var lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+                var lineItems = lines[lineIdx];
+                var lineLen = lineItems.length;
+                var totalLineWidth = 0;
+
+                // Measure each word ONCE and cache width on the item
+                for (var j = 0; j < lineLen; j++) {
+                  var currentItem = lineItems[j];
+                  var rect = currentItem.layer.sourceRectAtTime(
+                    currentItem.inPoint + 0.001,
+                    false,
+                  );
+                  var w = rect ? rect.width : 0;
+                  currentItem.width = w;
+                  totalLineWidth += w;
+                  if (j < lineLen - 1) {
+                    totalLineWidth += spaceWidth;
+                  }
+                }
+
+                var currentX = useRtl
+                  ? halfCompWidth + totalLineWidth / 2
+                  : halfCompWidth - totalLineWidth / 2;
+                var currentY = startY + lineIdx * lineHeight;
+
+                for (var j = 0; j < lineLen; j++) {
+                  var item = lineItems[j];
+                  var w = item.width;
+                  var newX = useRtl ? currentX - w / 2 : currentX + w / 2;
+                  item.positionProp.setValue([newX, currentY]);
+                  item.layer.outPoint = latestOutPoint;
+                  currentX += useRtl ? -(w + spaceWidth) : w + spaceWidth;
+                }
+              }
             }
           } catch (e_arrange) {
             processWarnings.push(
@@ -1361,7 +1415,7 @@ if (typeof JSON !== "object") {
         }
         // alert(finalMessage); // Removed success alert
 
-        if (createdTextLayers.length > 0) {
+        if (!precompCreated && createdTextLayers.length > 0) {
           var layerIndices = [];
           for (var k = 0; k < createdTextLayers.length; k++) {
             layerIndices.push(createdTextLayers[k].index);
@@ -1619,14 +1673,25 @@ if (typeof JSON !== "object") {
       }
 
       var selectedLayers = comp.selectedLayers;
-      var textLayers = [];
+      var textItems = [];
       for (var i = 0; i < selectedLayers.length; i++) {
-        if (selectedLayers[i] instanceof TextLayer) {
-          textLayers.push(selectedLayers[i]);
+        var selLayer = selectedLayers[i];
+        if (selLayer instanceof TextLayer) {
+          var srcDoc = selLayer
+            .property("ADBE Text Properties")
+            .property("ADBE Text Document").value;
+          textItems.push({
+            layer: selLayer,
+            inPoint: selLayer.inPoint,
+            outPoint: selLayer.outPoint,
+            text: srcDoc.text,
+            fontSize: srcDoc.fontSize,
+            width: 0,
+          });
         }
       }
 
-      if (textLayers.length < 1) {
+      if (textItems.length < 1) {
         alert("Please select at least one text layer to arrange.");
         return;
       }
@@ -1645,14 +1710,15 @@ if (typeof JSON !== "object") {
 
       var useRtl = forceRtlCheckbox.value;
 
-      textLayers.sort(function (a, b) {
+      // Sort by cached inPoint (pure JS, 0 DOM calls)
+      textItems.sort(function (a, b) {
         return a.inPoint - b.inPoint;
       });
 
       var latestOutPoint = 0;
-      for (var i = 0; i < textLayers.length; i++) {
-        if (textLayers[i].outPoint > latestOutPoint) {
-          latestOutPoint = textLayers[i].outPoint;
+      for (var i = 0; i < textItems.length; i++) {
+        if (textItems[i].outPoint > latestOutPoint) {
+          latestOutPoint = textItems[i].outPoint;
         }
       }
 
@@ -1661,9 +1727,9 @@ if (typeof JSON !== "object") {
       var currentLineWordCount = 0;
       var currentLineCharCount = 0;
 
-      for (var i = 0; i < textLayers.length; i++) {
-        var layer = textLayers[i];
-        var word = layer.property("Source Text").value.text;
+      for (var i = 0; i < textItems.length; i++) {
+        var item = textItems[i];
+        var word = item.text;
         if (word === "") continue;
 
         var wouldExceedLimits =
@@ -1673,11 +1739,11 @@ if (typeof JSON !== "object") {
 
         if (wouldExceedLimits) {
           lines.push(currentLine);
-          currentLine = [layer];
+          currentLine = [item];
           currentLineWordCount = 1;
           currentLineCharCount = word.length;
         } else {
-          currentLine.push(layer);
+          currentLine.push(item);
           currentLineWordCount++;
           currentLineCharCount +=
             (currentLineCharCount > 0 ? 1 : 0) + word.length;
@@ -1687,50 +1753,49 @@ if (typeof JSON !== "object") {
         lines.push(currentLine);
       }
 
-      var firstLayer = textLayers[0];
-      var textProp = firstLayer.property("Source Text");
-      var textDoc = textProp.value;
+      var firstItem = textItems[0];
       // Use a slightly tighter line height so multiple lines fit better
       // Default was 1.2; reduce to 1.05 for more compact paragraphs
-      var lineHeight = textDoc.fontSize * 1.05;
-
-      var startY = firstLayer.property("Transform").property("Position")
-        .value[1];
+      var lineHeight = firstItem.fontSize * 1.05;
+      var halfCompWidth = comp.width / 2;
+      var startY = firstItem.layer
+        .property("ADBE Transform Group")
+        .property("ADBE Position").value[1];
 
       for (var i = 0; i < lines.length; i++) {
-        var lineLayers = lines[i];
+        var lineItems = lines[i];
+        var lineLen = lineItems.length;
         var totalLineWidth = 0;
         var spaceWidth = 0;
 
-        for (var j = 0; j < lineLayers.length; j++) {
-          var currentLayer = lineLayers[j];
-          var rect = currentLayer.sourceRectAtTime(
-            currentLayer.inPoint + 0.001,
+        // Measure each layer ONCE and cache rect.width
+        for (var j = 0; j < lineLen; j++) {
+          var currentItem = lineItems[j];
+          var rect = currentItem.layer.sourceRectAtTime(
+            currentItem.inPoint + 0.001,
             false,
           );
+          currentItem.width = rect.width;
           totalLineWidth += rect.width;
-          if (j < lineLayers.length - 1) {
-            var currentTextProp = currentLayer.property("Source Text");
-            var currentTextDoc = currentTextProp.value;
+          if (j < lineLen - 1) {
             // Reduce inter-word spacing to half of previous value (fontSize/4)
-            spaceWidth = currentTextDoc.fontSize / 4;
+            spaceWidth = currentItem.fontSize / 4;
             totalLineWidth += spaceWidth;
           }
         }
 
         var currentX = useRtl
-          ? comp.width / 2 + totalLineWidth / 2
-          : comp.width / 2 - totalLineWidth / 2;
+          ? halfCompWidth + totalLineWidth / 2
+          : halfCompWidth - totalLineWidth / 2;
         var currentY = startY + i * lineHeight;
 
-        for (var j = 0; j < lineLayers.length; j++) {
-          var layer = lineLayers[j];
-          var rect = layer.sourceRectAtTime(layer.inPoint + 0.001, false);
-
-          var newX = useRtl
-            ? currentX - rect.width / 2
-            : currentX + rect.width / 2;
-          var positionProp = layer.property("Transform").property("Position");
+        for (var j = 0; j < lineLen; j++) {
+          var item = lineItems[j];
+          var w = item.width;
+          var newX = useRtl ? currentX - w / 2 : currentX + w / 2;
+          var positionProp = item.layer
+            .property("ADBE Transform Group")
+            .property("ADBE Position");
 
           if (positionProp.dimensionsSeparated) {
             positionProp.setValue([newX, currentY, positionProp.value[2] || 0]);
@@ -1738,15 +1803,11 @@ if (typeof JSON !== "object") {
             positionProp.setValue([newX, currentY]);
           }
 
-          layer.outPoint = latestOutPoint;
+          item.layer.outPoint = latestOutPoint;
 
-          var layerTextProp = layer.property("Source Text");
-          var layerTextDoc = layerTextProp.value;
           // Use reduced inter-word spacing (fontSize/4)
-          spaceWidth = layerTextDoc.fontSize / 4;
-          currentX += useRtl
-            ? -(rect.width + spaceWidth)
-            : rect.width + spaceWidth;
+          spaceWidth = item.fontSize / 4;
+          currentX += useRtl ? -(w + spaceWidth) : w + spaceWidth;
         }
       }
     } catch (e) {
@@ -1770,26 +1831,29 @@ if (typeof JSON !== "object") {
       }
 
       var selectedLayers = comp.selectedLayers;
-      var textLayers = [];
+      var textItems = [];
       for (var i = 0; i < selectedLayers.length; i++) {
-        if (selectedLayers[i] instanceof TextLayer) {
-          textLayers.push(selectedLayers[i]);
+        var selLayer = selectedLayers[i];
+        if (selLayer instanceof TextLayer) {
+          textItems.push({
+            layer: selLayer,
+            inPoint: selLayer.inPoint,
+          });
         }
       }
 
-      if (textLayers.length < 2) {
+      if (textItems.length < 2) {
         alert("Please select at least two text layers to combine.");
         app.endUndoGroup();
         return;
       }
 
-      // Sort layers by inPoint
-      textLayers.sort(function (a, b) {
+      // Sort by cached inPoint (pure JS, 0 DOM calls)
+      textItems.sort(function (a, b) {
         return a.inPoint - b.inPoint;
       });
 
-      var targetLayer = textLayers[0]; // The first layer is the one we'll keep and modify.
-      var otherLayers = textLayers.slice(1); // All other layers will be removed.
+      var targetLayer = textItems[0].layer; // The first layer is the one we'll keep and modify.
 
       var maxChars = parseInt(maxCharsInput.text, 10);
       if (isNaN(maxChars) || maxChars <= 0) {
@@ -1808,10 +1872,12 @@ if (typeof JSON !== "object") {
       var combinedTextContent = "";
       var currentLine = "";
       var currentLineWordCount = 0;
-      var lastLayerOutPoint = textLayers[textLayers.length - 1].outPoint;
+      var lastLayerOutPoint = textItems[textItems.length - 1].layer.outPoint;
 
-      for (var i = 0; i < textLayers.length; i++) {
-        var layerText = textLayers[i].property("Source Text").value.text;
+      for (var i = 0; i < textItems.length; i++) {
+        var layerText = textItems[i].layer
+          .property("ADBE Text Properties")
+          .property("ADBE Text Document").value.text;
         if (layerText === "") continue;
 
         var wordsInLayer = layerText.split(/\s+/); // Split by spaces
@@ -1856,7 +1922,9 @@ if (typeof JSON !== "object") {
       targetLayer.name = "Combined Text";
       targetLayer.outPoint = lastLayerOutPoint;
 
-      var textProp = targetLayer.property("Source Text");
+      var textProp = targetLayer
+        .property("ADBE Text Properties")
+        .property("ADBE Text Document");
       var textDoc = textProp.value;
       textDoc.text = combinedTextContent;
       textProp.setValue(textDoc);
@@ -1865,6 +1933,7 @@ if (typeof JSON !== "object") {
       refreshTextLayerState(targetLayer);
 
       // Center anchor point and position based on new text content
+      var targetTransform = targetLayer.property("ADBE Transform Group");
       try {
         var rect = targetLayer.sourceRectAtTime(
           targetLayer.inPoint + 0.001,
@@ -1873,22 +1942,20 @@ if (typeof JSON !== "object") {
         if (rect && rect.width > 0 && rect.height > 0) {
           var newAnchorX = rect.left + rect.width / 2;
           var newAnchorY = rect.top + rect.height / 2;
-          targetLayer
-            .property("Transform")
-            .property("Anchor Point")
+          targetTransform
+            .property("ADBE Anchor Point")
             .setValue([newAnchorX, newAnchorY]);
         }
       } catch (e_anchor) {
         // Optional: Log error
       }
-      targetLayer
-        .property("Transform")
-        .property("Position")
+      targetTransform
+        .property("ADBE Position")
         .setValue([comp.width / 2, comp.height / 2]);
 
       // Delete the other original layers
-      for (var k = otherLayers.length - 1; k >= 0; k--) {
-        otherLayers[k].remove();
+      for (var k = textItems.length - 1; k >= 1; k--) {
+        textItems[k].layer.remove();
       }
 
       // alert(
@@ -1917,21 +1984,26 @@ if (typeof JSON !== "object") {
       }
 
       var selectedLayers = comp.selectedLayers;
-      var textLayers = [];
+      var textItems = [];
       for (var i = 0; i < selectedLayers.length; i++) {
-        if (selectedLayers[i] instanceof TextLayer) {
-          textLayers.push(selectedLayers[i]);
+        var selLayer = selectedLayers[i];
+        if (selLayer instanceof TextLayer) {
+          textItems.push({
+            layer: selLayer,
+            inPoint: selLayer.inPoint,
+            outPoint: selLayer.outPoint,
+          });
         }
       }
 
-      if (textLayers.length === 0) {
+      if (textItems.length === 0) {
         alert("Please select text layers to combine.");
         app.endUndoGroup();
         return;
       }
 
-      // Sort layers by inPoint (start time) to ensure correct word order
-      textLayers.sort(function (a, b) {
+      // Sort by cached inPoint (pure JS, 0 DOM calls)
+      textItems.sort(function (a, b) {
         return a.inPoint - b.inPoint;
       });
 
@@ -1946,49 +2018,49 @@ if (typeof JSON !== "object") {
         maxWords = DEFAULT_MAX_WORDS_PER_LINE;
       }
 
-      // Group layers by Out Point (End Time) with a small tolerance
+      // Group items by cached Out Point (End Time) with a small tolerance
+      // Since textItems is already sorted by inPoint, each group is also sorted by inPoint.
       var groups = [];
       var TOLERANCE = 0.01; // 10ms tolerance
 
-      for (var i = 0; i < textLayers.length; i++) {
-        var layer = textLayers[i];
-        var outTime = layer.outPoint;
+      for (var i = 0; i < textItems.length; i++) {
+        var item = textItems[i];
+        var outTime = item.outPoint;
         var foundGroup = false;
 
         for (var g = 0; g < groups.length; g++) {
           if (Math.abs(groups[g].outTime - outTime) < TOLERANCE) {
-            groups[g].layers.push(layer);
+            groups[g].items.push(item);
             foundGroup = true;
             break;
           }
         }
 
         if (!foundGroup) {
-          groups.push({ outTime: outTime, layers: [layer] });
+          groups.push({ outTime: outTime, items: [item] });
         }
       }
 
+      var compCenter = [comp.width / 2, comp.height / 2];
+      var modifiedTargetLayers = [];
       var groupsProcessed = 0;
 
       for (var g = 0; g < groups.length; g++) {
-        var groupLayers = groups[g].layers;
+        var groupItems = groups[g].items;
 
         // Only combine if there's more than one layer in the group
-        if (groupLayers.length < 2) continue;
-
-        // Double-check sorting within group by inPoint
-        groupLayers.sort(function (a, b) {
-          return a.inPoint - b.inPoint;
-        });
+        if (groupItems.length < 2) continue;
 
         // The first layer (timeline-wise) becomes the container
-        var targetLayer = groupLayers[0];
-        var otherLayers = groupLayers.slice(1);
+        var targetItem = groupItems[0];
+        var targetLayer = targetItem.layer;
 
         // Collect all words
         var allWords = [];
-        for (var k = 0; k < groupLayers.length; k++) {
-          var layerVal = groupLayers[k].property("Source Text").value;
+        for (var k = 0; k < groupItems.length; k++) {
+          var layerVal = groupItems[k].layer
+            .property("ADBE Text Properties")
+            .property("ADBE Text Document").value;
           var txt = layerVal.text;
           if (typeof txt === "string") txt = txt.trim();
           else txt = String(txt).trim();
@@ -2042,41 +2114,55 @@ if (typeof JSON !== "object") {
         }
 
         // Update source text
-        var textProp = targetLayer.property("Source Text");
+        var textProp = targetLayer
+          .property("ADBE Text Properties")
+          .property("ADBE Text Document");
         var textDoc = textProp.value;
         textDoc.text = combinedText;
         textProp.setValue(textDoc);
 
-        // Refresh layer state to prevent AE focus error dialog
-        refreshTextLayerState(targetLayer);
+        modifiedTargetLayers.push(targetLayer);
 
         // Reset Anchor Point and Position (Center in Comp)
+        var targetTransform = targetLayer.property("ADBE Transform Group");
         try {
           var rect = targetLayer.sourceRectAtTime(
-            targetLayer.inPoint + 0.001,
+            targetItem.inPoint + 0.001,
             false,
           );
           if (rect) {
             var newAnchorX = rect.left + rect.width / 2;
             var newAnchorY = rect.top + rect.height / 2;
-            targetLayer
-              .property("Transform")
-              .property("Anchor Point")
+            targetTransform
+              .property("ADBE Anchor Point")
               .setValue([newAnchorX, newAnchorY]);
           }
         } catch (e_mid) {}
 
-        targetLayer
-          .property("Transform")
-          .property("Position")
-          .setValue([comp.width / 2, comp.height / 2]);
+        targetTransform.property("ADBE Position").setValue(compCenter);
 
         // Remove other layers
-        for (var d = 0; d < otherLayers.length; d++) {
-          otherLayers[d].remove();
+        for (var d = groupItems.length - 1; d >= 1; d--) {
+          groupItems[d].layer.remove();
         }
 
         groupsProcessed++;
+      }
+
+      // Batch refresh all modified target layers in a single UI flush
+      if (modifiedTargetLayers.length > 0) {
+        try {
+          var prevSelectedStates = [];
+          for (var m = 0; m < modifiedTargetLayers.length; m++) {
+            var mLayer = modifiedTargetLayers[m];
+            prevSelectedStates.push(mLayer.selected);
+            mLayer.selected = false;
+          }
+          $.sleep(10);
+          for (var m = 0; m < modifiedTargetLayers.length; m++) {
+            modifiedTargetLayers[m].selected = prevSelectedStates[m];
+          }
+        } catch (e_batch_refresh) {}
       }
     } catch (e) {
       alert("Error processing groups: " + e.toString());
@@ -2098,9 +2184,13 @@ if (typeof JSON !== "object") {
       var curlCommand;
       var tempFilePathForCurl = tempFile.fsName.replace(/\\/g, "/");
 
-      // Use -L to follow redirects, which is common with raw GitHub URLs
+      // Use -L to follow redirects, and short timeouts so offline/slow networks don't stall startup
       curlCommand =
-        'curl -s -L "' + GITHUB_RAW_URL + '" -o "' + tempFilePathForCurl + '"';
+        'curl -s -L --connect-timeout 2 --max-time 4 "' +
+        GITHUB_RAW_URL +
+        '" -o "' +
+        tempFilePathForCurl +
+        '"';
 
       if ($.os.indexOf("Windows") > -1) {
         system.callSystem('cmd.exe /c "' + curlCommand + '"');
@@ -2335,6 +2425,11 @@ if (typeof JSON !== "object") {
               availableFonts.push({
                 postScriptName: font.postScriptName,
                 displayName: displayName,
+                searchText: (
+                  displayName +
+                  " " +
+                  font.postScriptName
+                ).toLowerCase(),
               });
               if (font.postScriptName === DEFAULT_TEXT_FONT_POSTSCRIPT_NAME) {
                 defaultFontPostScript = font.postScriptName;
@@ -2344,16 +2439,17 @@ if (typeof JSON !== "object") {
         }
 
         // Populate the dropdown from the cached list (supports filtering)
+        var lastFontFilterQuery = null;
         var populateFontDropdown = function (query) {
           query = (query || "").toString().toLowerCase();
+          if (query === lastFontFilterQuery) {
+            return;
+          }
+          lastFontFilterQuery = query;
           fontNameInput.removeAll();
           for (var k = 0; k < availableFonts.length; k++) {
             var f = availableFonts[k];
-            if (
-              query === "" ||
-              f.displayName.toLowerCase().indexOf(query) !== -1 ||
-              f.postScriptName.toLowerCase().indexOf(query) !== -1
-            ) {
+            if (query === "" || f.searchText.indexOf(query) !== -1) {
               var it = fontNameInput.add("item", f.displayName);
               it.properties = { postScriptName: f.postScriptName };
             }
@@ -2863,7 +2959,6 @@ if (typeof JSON !== "object") {
       for (var i = 0; i < presetDropdown.items.length; i++) {
         if (presetDropdown.items[i].text === lastPreset) {
           presetDropdown.selection = i;
-          applyPresetToUI(lastPreset);
           found = true;
           break;
         }
