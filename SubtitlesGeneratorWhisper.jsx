@@ -272,7 +272,7 @@ if (typeof JSON !== "object") {
 
 (function createAndRunWhisperPanel(thisObj) {
   // --- Configuration ---
-  var SCRIPT_VERSION = "3.6"; // Current version of the script
+  var SCRIPT_VERSION = "3.7"; // Current version of the script
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
@@ -947,33 +947,44 @@ if (typeof JSON !== "object") {
         var tempTemplateLayer = null;
 
         if (hasValidLayersToCreate) {
-          // --- OPTIMIZATION: Pre-compose upfront so layers build off-screen ---
-          // Creating hundreds of layers inside an inactive comp skips live UI/Timeline redraws
-          // and avoids moving layers across comps afterward.
-          tempTemplateLayer = comp.layers.addText("TEMPLATE");
+          // --- OPTIMIZATION: Build all layers inside a detached off-screen CompItem ---
+          // Creating hundreds of layers inside a detached comp avoids touching the active
+          // timeline/viewer UI until the finished pre-comp is added once at the end.
           try {
-            var subtitlePrecompLayer = comp.layers.precompose(
-              [tempTemplateLayer.index],
+            var safePixelAspect =
+              comp.pixelAspect && comp.pixelAspect > 0 ? comp.pixelAspect : 1.0;
+            var safeDuration =
+              comp.duration && comp.duration > 0 ? comp.duration : 60;
+            var safeFrameRate =
+              comp.frameRate && comp.frameRate > 0
+                ? comp.frameRate
+                : frameDuration > 0
+                  ? 1 / frameDuration
+                  : 30;
+            var offscreenComp = app.project.items.addComp(
               PRECOMP_NAME,
-              true,
+              compWidth,
+              compHeight,
+              safePixelAspect,
+              safeDuration,
+              safeFrameRate,
             );
-            if (
-              subtitlePrecompLayer &&
-              subtitlePrecompLayer.source instanceof CompItem
-            ) {
-              targetComp = subtitlePrecompLayer.source;
-              tempTemplateLayer = targetComp.layer(1);
+            if (offscreenComp instanceof CompItem) {
+              try {
+                if (comp.parentFolder) {
+                  offscreenComp.parentFolder = comp.parentFolder;
+                }
+                offscreenComp.displayStartTime = comp.displayStartTime;
+                offscreenComp.bgColor = comp.bgColor;
+              } catch (e_comp_props) {}
+              targetComp = offscreenComp;
               precompCreated = true;
-            } else {
-              processWarnings.push(
-                "Failed to pre-compose the subtitle layers.",
-              );
             }
-          } catch (e_precomp) {
-            processWarnings.push(
-              "Error during pre-composition: " + e_precomp.toString(),
-            );
+          } catch (e_addcomp) {
+            // Fall back silently to building in comp and precomposing at the end
           }
+
+          tempTemplateLayer = targetComp.layers.addText("TEMPLATE");
 
           // --- OPTIMIZATION: Pre-configure TextDocument once and reuse it ---
           tempTemplateLayer.enabled = false;
@@ -1415,7 +1426,27 @@ if (typeof JSON !== "object") {
         }
         // alert(finalMessage); // Removed success alert
 
-        if (!precompCreated && createdTextLayers.length > 0) {
+        if (precompCreated && targetComp !== comp) {
+          if (createdTextLayers.length > 0) {
+            try {
+              var addedPrecompLayer = comp.layers.add(targetComp);
+              if (!addedPrecompLayer) {
+                processWarnings.push(
+                  "Failed to add the subtitle pre-comp to the active composition.",
+                );
+              }
+            } catch (e_add_precomp) {
+              processWarnings.push(
+                "Error adding subtitle pre-comp to active composition: " +
+                  e_add_precomp.toString(),
+              );
+            }
+          } else {
+            try {
+              targetComp.remove();
+            } catch (e_remove_empty) {}
+          }
+        } else if (!precompCreated && createdTextLayers.length > 0) {
           var layerIndices = [];
           for (var k = 0; k < createdTextLayers.length; k++) {
             layerIndices.push(createdTextLayers[k].index);
