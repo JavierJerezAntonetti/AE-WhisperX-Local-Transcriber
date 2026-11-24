@@ -276,6 +276,7 @@ if (typeof JSON !== "object") {
   var GITHUB_RAW_URL =
     "https://raw.githubusercontent.com/JavierJerezAntonetti/AE-WhisperX-Local-Transcriber/main/SubtitlesGeneratorWhisper.jsx";
   var WHISPER_API_URL = "http://127.0.0.1:5000/transcribe";
+  var serverSupportsAudioPath = true; // Auto-disabled if running against an older API server
   // Name of the script shown in update messages
   var SCRIPT_NAME = "AE Whisper X Local Transcriber";
 
@@ -547,7 +548,6 @@ if (typeof JSON !== "object") {
       "_" +
       TEMP_RESPONSE_FILENAME;
     var responseFile = new File(responseFilePath);
-    if (responseFile.exists) responseFile.remove();
 
     var audioPathForCurl = audioFile.fsName.replace(/\\/g, "/");
     var responsePathForCurl = responseFile.fsName.replace(/\\/g, "/");
@@ -559,25 +559,20 @@ if (typeof JSON !== "object") {
       /^[\x20-\x7E]+$/.test(audioPathForCurl) &&
       audioPathForCurl.indexOf(";") === -1 &&
       audioPathForCurl.indexOf('"') === -1 &&
+      audioPathForCurl.indexOf("%") === -1 &&
       audioPathForCurl.charAt(0) !== "@" &&
       audioPathForCurl.charAt(0) !== "<";
-    var curlCommand =
-      'curl -s -S -X POST -F "' +
-      (isSafeAsciiPath
-        ? "audio_path=" + audioPathForCurl
-        : 'audio=@\\"' + audioPathForCurl + '\\"') +
-      '" -F "transcription_level=' +
-      transcriptionLevel +
-      '"';
+
+    var commonArgs = ' -F "transcription_level=' + transcriptionLevel + '"';
 
     // Add separate_text_layers flag if requested (enables single-pass hybrid mode)
     if (separateTextLayers) {
-      curlCommand += ' -F "separate_text_layers=true"';
+      commonArgs += ' -F "separate_text_layers=true"';
     }
 
     // Add Language Code if provided
     if (languageCode && languageCode.trim() !== "") {
-      curlCommand += ' -F "language=' + languageCode.trim() + '"';
+      commonArgs += ' -F "language=' + languageCode.trim() + '"';
     }
 
     // Add Gemini API key if provided (for sentence-level splitting)
@@ -588,70 +583,102 @@ if (typeof JSON !== "object") {
     ) {
       // Escape the API key for curl (handle special characters)
       var escapedApiKey = geminiApiKey.replace(/"/g, '\\"');
-      curlCommand += ' -F "gemini_api_key=' + escapedApiKey + '"';
+      commonArgs += ' -F "gemini_api_key=' + escapedApiKey + '"';
     }
 
-    curlCommand +=
+    commonArgs +=
       ' "' + WHISPER_API_URL + '" -o "' + responsePathForCurl + '"';
 
-    var systemCallResult = "";
-    try {
-      if ($.os.indexOf("Windows") > -1) {
-        systemCallResult = system.callSystem(
-          'cmd.exe /c "' + curlCommand + '"',
-        );
-      } else {
-        systemCallResult = system.callSystem(curlCommand);
-      }
-    } catch (e_curl_exec) {
-      throw new Error(
-        "Error calling system command (curl): " +
-          e_curl_exec.toString() +
-          "\nEnsure curl is installed and in your system PATH.\nCommand: " +
-          curlCommand,
-      );
-    }
+    var executeCurlRequest = function (useAudioPath) {
+      if (responseFile.exists) responseFile.remove();
 
-    if (!responseFile.exists || responseFile.length === 0) {
-      throw new Error(
-        "API call failed or produced no response file (or empty file). \n" +
-          "Curl command was: " +
-          curlCommand +
-          "\n" +
-          "System call result string (if any): '" +
-          systemCallResult +
-          "'\n" +
-          "Check if your Python Whisper API server is running at " +
-          WHISPER_API_URL +
-          ".\n" +
-          "Expected response file at: " +
-          responseFilePath,
-      );
-    }
+      var curlCommand =
+        'curl -s -S -X POST -F "' +
+        (useAudioPath
+          ? "audio_path=" + audioPathForCurl
+          : 'audio=@\\"' + audioPathForCurl + '\\"') +
+        '"' +
+        commonArgs;
 
-    // Parse JSON response
-    var transcriptionData;
-    var responseContent = "";
-    try {
-      responseFile.open("r");
-      responseContent = responseFile.read();
-      responseFile.close();
-
-      if (responseContent.length > 0 && responseContent.charAt(0) === "<") {
+      var systemCallResult = "";
+      try {
+        if ($.os.indexOf("Windows") > -1) {
+          systemCallResult = system.callSystem(
+            'cmd.exe /c "' + curlCommand + '"',
+          );
+        } else {
+          systemCallResult = system.callSystem(curlCommand);
+        }
+      } catch (e_curl_exec) {
         throw new Error(
-          "Received HTML instead of JSON. API server might have an error. Check server logs. Response starts with: " +
-            responseContent.substring(0, 200),
+          "Error calling system command (curl): " +
+            e_curl_exec.toString() +
+            "\nEnsure curl is installed and in your system PATH.\nCommand: " +
+            curlCommand,
         );
       }
-      transcriptionData = JSON.parse(responseContent);
-    } catch (e_json) {
-      throw new Error(
-        "Error parsing API response: " +
-          e_json.toString() +
-          "\nResponse content was:\n" +
-          (responseContent.substring(0, 500) || "empty") +
-          (responseContent.length > 500 ? "..." : ""),
-      );
+
+      if (!responseFile.exists || responseFile.length === 0) {
+        throw new Error(
+          "API call failed or produced no response file (or empty file). \n" +
+            "Curl command was: " +
+            curlCommand +
+            "\n" +
+            "System call result string (if any): '" +
+            systemCallResult +
+            "'\n" +
+            "Check if your Python Whisper API server is running at " +
+            WHISPER_API_URL +
+            ".\n" +
+            "Expected response file at: " +
+            responseFilePath,
+        );
+      }
+
+      // Parse JSON response
+      var parsedData;
+      var responseContent = "";
+      try {
+        responseFile.open("r");
+        responseContent = responseFile.read();
+        responseFile.close();
+
+        if (responseContent.length > 0 && responseContent.charAt(0) === "<") {
+          throw new Error(
+            "Received HTML instead of JSON. API server might have an error. Check server logs. Response starts with: " +
+              responseContent.substring(0, 200),
+          );
+        }
+        parsedData = JSON.parse(responseContent);
+      } catch (e_json) {
+        throw new Error(
+          "Error parsing API response: " +
+            e_json.toString() +
+            "\nResponse content was:\n" +
+            (responseContent.substring(0, 500) || "empty") +
+            (responseContent.length > 500 ? "..." : ""),
+        );
+      }
+
+      return parsedData;
+    };
+
+    var canUseAudioPath = serverSupportsAudioPath && isSafeAsciiPath;
+    var transcriptionData = executeCurlRequest(canUseAudioPath);
+
+    // Automatically fall back to multipart upload if connected to an older API server
+    // or if the server cannot access the local path directly.
+    if (canUseAudioPath && transcriptionData && transcriptionData.error) {
+      var errStr = String(transcriptionData.error);
+      if (
+        errStr.indexOf("No audio file part") !== -1 ||
+        errStr.indexOf("Audio file not found") !== -1
+      ) {
+        if (errStr.indexOf("No audio file part") !== -1) {
+          serverSupportsAudioPath = false;
+        }
+        transcriptionData = executeCurlRequest(false);
+      }
     }
 
     return transcriptionData;
